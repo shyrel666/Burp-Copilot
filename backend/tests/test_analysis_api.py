@@ -152,3 +152,51 @@ def test_provider_settings_update_is_used_without_restart(tmp_path, monkeypatch)
 
     assert response.status_code == 200
     assert response.json()["llm_status"] == "ok"
+
+
+class FailingProvider:
+    """Provider that always raises a network-style error to simulate outages."""
+
+    def __init__(self, api_key=None, model=None, base_url=None):
+        pass
+
+    async def analyze(self, system_prompt, user_prompt):
+        raise RuntimeError("simulated upstream outage")
+
+    async def repair_json(self, invalid_text, error):
+        raise RuntimeError("simulated upstream outage")
+
+    async def health_check(self):
+        return HealthCheckResult(ok=False, reason="simulated outage")
+
+
+def test_provider_outage_returns_failed_status_and_does_not_leak_secrets(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr("app.main.OpenAIProvider", FailingProvider)
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+
+    sensitive_request = (
+        "POST /login HTTP/1.1\r\n"
+        "Host: example.test\r\n"
+        "Authorization: Bearer ultra-secret-token-2222\r\n\r\n"
+        "password=ultra-secret-token-2222"
+    )
+
+    with caplog.at_level("WARNING"):
+        response = client.post(
+            "/api/v1/analyze",
+            json={
+                "source": "dashboard",
+                "mode": "analyze",
+                "request_text": sensitive_request,
+                "metadata": {"content_encoding": "utf-8"},
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["llm_status"] == "failed"
+    assert "ultra-secret-token-2222" not in caplog.text
+
+    history_response = client.get("/api/v1/history").json()
+    assert "ultra-secret-token-2222" not in str(history_response)
+    assert history_response[0]["llm_status"] == "failed"

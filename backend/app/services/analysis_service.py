@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from app.core.input_guard import guard_payload
 from app.core.redaction import redact_pair
 from app.llm.base import BaseLLMProvider
@@ -7,6 +9,9 @@ from app.llm.result_parser import parse_llm_json
 from app.models.schemas import AnalysisResponse, AnalyzeRequest, Finding
 from app.services.history_store import HistoryStore
 from app.services.prompt_builder import build_prompt
+
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
@@ -30,21 +35,7 @@ class AnalysisService:
         )
         analysis_id = self.history.create_analysis_id()
 
-        try:
-            raw = await self.provider.analyze(system_prompt, user_prompt)
-            parsed = parse_llm_json(raw)
-            llm_status = "ok"
-        except Exception as exc:
-            try:
-                repaired = await self.provider.repair_json(raw if "raw" in locals() else "", str(exc))
-                parsed = parse_llm_json(repaired)
-                llm_status = "repaired"
-            except Exception:
-                parsed = {
-                    "summary": "The LLM response could not be parsed into the required schema.",
-                    "findings": [],
-                }
-                llm_status = "failed"
+        parsed, llm_status = await self._invoke_provider(system_prompt, user_prompt)
 
         response = AnalysisResponse(
             analysis_id=analysis_id,
@@ -63,4 +54,32 @@ class AnalysisService:
             analysis=response,
         )
         return response
+
+    async def _invoke_provider(self, system_prompt: str, user_prompt: str) -> tuple[dict, str]:
+        try:
+            raw = await self.provider.analyze(system_prompt, user_prompt)
+        except Exception as exc:
+            logger.warning("provider call failed: %s", type(exc).__name__)
+            return _failure_payload(), "failed"
+
+        try:
+            return parse_llm_json(raw), "ok"
+        except ValueError as parse_error:
+            logger.info(
+                "provider returned unparseable output, attempting repair: %s",
+                type(parse_error).__name__,
+            )
+            try:
+                repaired = await self.provider.repair_json(raw, str(parse_error))
+                return parse_llm_json(repaired), "repaired"
+            except Exception as exc:
+                logger.warning("provider repair failed: %s", type(exc).__name__)
+                return _failure_payload(), "failed"
+
+
+def _failure_payload() -> dict:
+    return {
+        "summary": "The LLM response could not be parsed into the required schema.",
+        "findings": [],
+    }
 
