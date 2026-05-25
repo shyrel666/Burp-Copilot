@@ -68,3 +68,19 @@ def test_invalid_llm_json_is_repaired_once(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["llm_status"] == "repaired"
+
+
+def test_local_dashboard_origin_is_allowed_for_cors(tmp_path):
+    app = create_app(data_dir=tmp_path, provider_mode="fake")
+    client = TestClient(app)
+
+    response = client.options(
+        "/api/v1/analyze",
+        headers={
+            "Origin": "http://127.0.0.1:5173",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
