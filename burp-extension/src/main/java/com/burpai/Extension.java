@@ -3,8 +3,11 @@ package com.burpai;
 import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.http.message.HttpRequestResponse;
+import burp.api.montoya.http.message.requests.HttpRequest;
+import burp.api.montoya.http.message.responses.HttpResponse;
 import burp.api.montoya.ui.contextmenu.ContextMenuEvent;
 import burp.api.montoya.ui.contextmenu.ContextMenuItemsProvider;
+import burp.api.montoya.ui.contextmenu.MessageEditorHttpRequestResponse;
 import com.burpai.core.AnalysisRequestBuilder;
 import com.burpai.core.AnalysisResultFormatter;
 import com.burpai.core.BackendClient;
@@ -25,6 +28,7 @@ import java.awt.Component;
 import java.awt.GridLayout;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class Extension implements BurpExtension, ContextMenuItemsProvider {
     private MontoyaApi api;
@@ -44,7 +48,7 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
     @Override
     public List<Component> provideMenuItems(ContextMenuEvent event) {
         List<Component> items = new ArrayList<>();
-        if (event.selectedRequestResponses().isEmpty()) {
+        if (!hasSelectedMessage(event)) {
             return items;
         }
         JMenuItem analyze = new JMenuItem("AI Analyze");
@@ -80,16 +84,58 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
     }
 
     private void submitSelected(ContextMenuEvent event, String mode) {
-        HttpRequestResponse selected = event.selectedRequestResponses().get(0);
-        String request = selected.request().toString();
-        String response = selected.response() == null ? null : selected.response().toString();
-        String targetUrl = selected.request().url();
+        SelectedMessage message = extractMessage(event);
+        if (message == null) {
+            setResult("No request was available from this context.");
+            return;
+        }
+        String request = message.request.toString();
+        String response = message.response == null ? null : message.response.toString();
+        String targetUrl = message.targetUrl;
         PreparedHttpMessage prepared = HttpMessageFilter.prepare(request, response, targetUrl);
         String json = AnalysisRequestBuilder.build("burp", mode, prepared);
         runInBackground("Analyzing selected traffic...", () -> {
             BackendClient client = new BackendClient(backendUrlField.getText(), tokenField.getText());
             return client.analyze(json);
         });
+    }
+
+    private static boolean hasSelectedMessage(ContextMenuEvent event) {
+        if (!event.selectedRequestResponses().isEmpty()) {
+            return true;
+        }
+        Optional<MessageEditorHttpRequestResponse> editor = event.messageEditorRequestResponse();
+        return editor.isPresent() && editor.get().requestResponse().request() != null;
+    }
+
+    private static SelectedMessage extractMessage(ContextMenuEvent event) {
+        if (!event.selectedRequestResponses().isEmpty()) {
+            HttpRequestResponse selected = event.selectedRequestResponses().get(0);
+            return new SelectedMessage(selected.request(), selected.response(), selected.request().url());
+        }
+        Optional<MessageEditorHttpRequestResponse> editor = event.messageEditorRequestResponse();
+        if (editor.isPresent()) {
+            HttpRequestResponse rr = editor.get().requestResponse();
+            HttpRequest request = rr.request();
+            if (request == null) {
+                return null;
+            }
+            HttpResponse response = rr.response();
+            return new SelectedMessage(request, response, request.url());
+        }
+        return null;
+    }
+
+    private static final class SelectedMessage {
+        final HttpRequest request;
+        final HttpResponse response;
+        final String targetUrl;
+
+        SelectedMessage(HttpRequest request, HttpResponse response, String targetUrl) {
+            this.request = request;
+            this.response = response;
+            this.targetUrl = targetUrl;
+        }
     }
 
     private void testBackend() {
