@@ -43,6 +43,8 @@ VALIDATOR = Draft202012Validator(RESULT_SCHEMA)
 
 
 def parse_llm_json(text: str) -> dict:
+    if text is None or not text.strip():
+        raise ValueError("Empty LLM response")
     candidate = _extract_json_object(text)
     try:
         parsed = json.loads(candidate)
@@ -58,12 +60,11 @@ def parse_llm_json(text: str) -> dict:
 
 
 def _extract_json_object(text: str) -> str:
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        return fenced.group(1)
-    start = text.find("{")
-    end = text.rfind("}")
+    fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    body = fenced.group(1) if fenced else text
+    start = body.find("{")
+    end = body.rfind("}")
     if start >= 0 and end > start:
-        return text[start : end + 1]
-    return text
+        return body[start : end + 1]
+    return body
 
