@@ -78,11 +78,11 @@ describe('dashboard', () => {
     await screen.findByText('sk-...1234');
     await user.clear(screen.getByLabelText(/model/i));
     await user.type(screen.getByLabelText(/model/i), 'gpt-test');
-    await user.type(screen.getByLabelText(/api key/i), 'sk-secret-value-9999');
+    await user.type(screen.getByLabelText(/api key/i), 'sk-test-key-9999');
     await user.click(screen.getByRole('button', { name: /save provider/i }));
 
     await waitFor(() => expect(screen.getByText('sk-...9999')).toBeInTheDocument());
-    expect(screen.queryByText('sk-secret-value-9999')).not.toBeInTheDocument();
+    expect(screen.queryByText('sk-test-key-9999')).not.toBeInTheDocument();
   });
 });
 

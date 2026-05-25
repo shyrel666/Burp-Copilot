@@ -43,13 +43,13 @@ def test_settings_endpoint_never_returns_plain_api_key(tmp_path):
 
     response = client.put(
         "/api/v1/settings/provider",
-        json={"provider": "openai", "model": "gpt-test", "api_key": "sk-secret-value-9999"},
+        json={"provider": "openai", "model": "gpt-test", "api_key": "sk-test-key-9999"},
     )
     assert response.status_code == 200
 
     settings = client.get("/api/v1/settings").json()
     assert settings["masked_api_key"] == "sk-...9999"
-    assert "sk-secret-value-9999" not in str(settings)
+    assert "sk-test-key-9999" not in str(settings)
 
 
 def test_invalid_llm_json_is_repaired_once(tmp_path):
