@@ -34,6 +34,7 @@ data/
 node_modules/
 frontend/dist/
 frontend/coverage/
+*.tsbuildinfo
 
 # Java / Maven / Gradle
 target/
