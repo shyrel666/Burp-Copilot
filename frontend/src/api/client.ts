@@ -1,12 +1,14 @@
 import type { AnalysisHistoryItem, AnalysisResponse, Mode, ProviderSettings } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+const BACKEND_TOKEN = import.meta.env.VITE_BACKEND_TOKEN ?? '';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(BACKEND_TOKEN ? { 'X-Backend-Token': BACKEND_TOKEN } : {}),
       ...(init?.headers ?? {}),
     },
   });

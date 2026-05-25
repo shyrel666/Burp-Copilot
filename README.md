@@ -71,6 +71,12 @@ Copy `.env.example` to `.env` for local development and fill in local values.
 
 Never commit `.env` or real provider keys.
 
+If `BACKEND_TOKEN` is set for the backend, clients must send the same value in
+the `X-Backend-Token` header:
+
+- Dashboard: set `VITE_BACKEND_TOKEN` before running `npm run dev` or building.
+- Burp extension: enter the token in the `Backend Token` field.
+
 ## Authorized Use Only
 
 This project is for defensive security review, education, and authorized penetration testing. Do not use it against systems you do not own or have explicit permission to test.
