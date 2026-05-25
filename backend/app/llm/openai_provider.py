@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 
 import httpx
@@ -7,11 +8,26 @@ import httpx
 from app.llm.base import BaseLLMProvider, HealthCheckResult
 
 
+_TRANSIENT_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+
+
 class OpenAIProvider(BaseLLMProvider):
-    def __init__(self, api_key: str | None, model: str | None = None, base_url: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str | None = None,
+        base_url: str | None = None,
+        *,
+        max_attempts: int = 3,
+        request_timeout: float = 20.0,
+        retry_backoff: float = 0.5,
+    ):
         self.api_key = api_key
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.base_url = (base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")).rstrip("/")
+        self.max_attempts = max_attempts
+        self.request_timeout = request_timeout
+        self.retry_backoff = retry_backoff
 
     async def analyze(self, system_prompt: str, user_prompt: str) -> str:
         return await self._chat(
@@ -60,13 +76,33 @@ class OpenAIProvider(BaseLLMProvider):
     async def _chat(self, messages: list[dict[str, str]]) -> str:
         if not self.api_key:
             raise RuntimeError("OpenAI API key is not configured")
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": self.model, "messages": messages, "temperature": 0.1},
-            )
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                async with self._client(timeout=self.request_timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={"Authorization": f"Bearer {self.api_key}"},
+                        json={"model": self.model, "messages": messages, "temperature": 0.1},
+                    )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_error = exc
+                if attempt == self.max_attempts:
+                    raise
+                await asyncio.sleep(self.retry_backoff * attempt)
+                continue
+
+            if response.status_code in _TRANSIENT_STATUS_CODES and attempt < self.max_attempts:
+                last_error = httpx.HTTPStatusError(
+                    f"transient {response.status_code}", request=response.request, response=response
+                )
+                await asyncio.sleep(self.retry_backoff * attempt)
+                continue
+
             response.raise_for_status()
             payload = response.json()
-        return payload["choices"][0]["message"]["content"]
+            return payload["choices"][0]["message"]["content"]
+
+        # Defensive: loop must have either returned or raised above.
+        raise last_error if last_error else RuntimeError("provider call failed without an explicit error")
 
