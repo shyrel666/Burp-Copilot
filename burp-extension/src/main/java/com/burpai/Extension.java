@@ -14,6 +14,9 @@ import com.burpai.core.BackendClient;
 import com.burpai.core.HttpMessageFilter;
 import com.burpai.core.PreparedHttpMessage;
 
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
@@ -25,7 +28,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
 import java.awt.Component;
-import java.awt.GridLayout;
+import java.awt.Dimension;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -62,17 +65,22 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
 
     private JPanel createPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        JPanel settings = new JPanel(new GridLayout(3, 2));
         backendUrlField = new JTextField("http://localhost:8000");
         tokenField = new JTextField("");
         JButton healthButton = new JButton("Test Backend");
         healthButton.addActionListener(ignored -> testBackend());
-        settings.add(new JLabel("Backend URL"));
-        settings.add(backendUrlField);
-        settings.add(new JLabel("Backend Token"));
-        settings.add(tokenField);
-        settings.add(new JLabel(""));
-        settings.add(healthButton);
+
+        JPanel settings = new JPanel();
+        settings.setLayout(new BoxLayout(settings, BoxLayout.Y_AXIS));
+        settings.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        settings.add(labeledRow("Backend URL", backendUrlField));
+        settings.add(Box.createVerticalStrut(4));
+        settings.add(labeledRow("Backend Token", tokenField));
+        settings.add(Box.createVerticalStrut(4));
+        JPanel buttonRow = new JPanel(new BorderLayout());
+        buttonRow.add(healthButton, BorderLayout.EAST);
+        buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, healthButton.getPreferredSize().height + 4));
+        settings.add(buttonRow);
 
         resultArea = new JTextArea();
         resultArea.setEditable(false);
@@ -81,6 +89,16 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
         panel.add(settings, BorderLayout.NORTH);
         panel.add(new JScrollPane(resultArea), BorderLayout.CENTER);
         return panel;
+    }
+
+    private static JPanel labeledRow(String labelText, JTextField field) {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        JLabel label = new JLabel(labelText);
+        label.setPreferredSize(new Dimension(120, label.getPreferredSize().height));
+        row.add(label, BorderLayout.WEST);
+        row.add(field, BorderLayout.CENTER);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, field.getPreferredSize().height + 4));
+        return row;
     }
 
     private void submitSelected(ContextMenuEvent event, String mode) {
