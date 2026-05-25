@@ -107,6 +107,34 @@ def test_local_dashboard_origin_is_allowed_for_cors(tmp_path):
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
 
 
+def test_any_localhost_port_is_allowed_for_cors(tmp_path):
+    app = create_app(data_dir=tmp_path, provider_mode="fake")
+    client = TestClient(app)
+
+    for origin in ("http://localhost:5174", "http://127.0.0.1:3001", "http://localhost"):
+        response = client.options(
+            "/api/v1/analyze",
+            headers={"Origin": origin, "Access-Control-Request-Method": "POST"},
+        )
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == origin
+
+
+def test_external_origin_is_rejected_for_cors(tmp_path):
+    app = create_app(data_dir=tmp_path, provider_mode="fake")
+    client = TestClient(app)
+
+    response = client.options(
+        "/api/v1/analyze",
+        headers={
+            "Origin": "https://evil.example.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert "access-control-allow-origin" not in response.headers
+
+
 def test_backend_token_is_required_when_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("BACKEND_TOKEN", "unit-test-token")
     app = create_app(data_dir=tmp_path, provider_mode="fake")

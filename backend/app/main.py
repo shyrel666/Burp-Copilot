@@ -18,12 +18,7 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
     app = FastAPI(title="Burp AI HTTP Traffic Analyzer", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://127.0.0.1:5173",
-            "http://localhost:5173",
-            "http://127.0.0.1:3000",
-            "http://localhost:3000",
-        ],
+        allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
         allow_methods=["GET", "POST", "PUT", "OPTIONS"],
         allow_headers=["Content-Type", "X-Backend-Token"],
     )
