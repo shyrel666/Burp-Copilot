@@ -119,3 +119,39 @@ def test_chat_retries_on_network_errors_until_giving_up():
     with pytest.raises(httpx.ConnectError):
         asyncio.run(provider.analyze("sys", "user"))
     assert attempts["count"] == 3
+
+
+def test_chat_raises_status_error_when_transient_5xx_persists_to_last_attempt():
+    attempts = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        return httpx.Response(503, json={"error": "still busy"})
+
+    transport = httpx.MockTransport(handler)
+    provider = _PatchedProvider(
+        api_key="sk-test", transport=transport, max_attempts=3, retry_backoff=0.0
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        asyncio.run(provider.analyze("sys", "user"))
+    assert exc_info.value.response.status_code == 503
+    assert attempts["count"] == 3
+
+
+def test_chat_retries_on_429_rate_limit():
+    attempts = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        if attempts["count"] < 2:
+            return httpx.Response(429, json={"error": "rate limited"})
+        return httpx.Response(200, json=_VALID_CHAT_PAYLOAD)
+
+    transport = httpx.MockTransport(handler)
+    provider = _PatchedProvider(api_key="sk-test", transport=transport, retry_backoff=0.0)
+
+    content = asyncio.run(provider.analyze("sys", "user"))
+
+    assert content == '{"summary":"ok","findings":[]}'
+    assert attempts["count"] == 2

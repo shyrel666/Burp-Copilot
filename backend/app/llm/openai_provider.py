@@ -76,8 +76,8 @@ class OpenAIProvider(BaseLLMProvider):
     async def _chat(self, messages: list[dict[str, str]]) -> str:
         if not self.api_key:
             raise RuntimeError("OpenAI API key is not configured")
-        last_error: Exception | None = None
         for attempt in range(1, self.max_attempts + 1):
+            is_last = attempt == self.max_attempts
             try:
                 async with self._client(timeout=self.request_timeout) as client:
                     response = await client.post(
@@ -85,17 +85,13 @@ class OpenAIProvider(BaseLLMProvider):
                         headers={"Authorization": f"Bearer {self.api_key}"},
                         json={"model": self.model, "messages": messages, "temperature": 0.1},
                     )
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                last_error = exc
-                if attempt == self.max_attempts:
+            except (httpx.TimeoutException, httpx.TransportError):
+                if is_last:
                     raise
                 await asyncio.sleep(self.retry_backoff * attempt)
                 continue
 
-            if response.status_code in _TRANSIENT_STATUS_CODES and attempt < self.max_attempts:
-                last_error = httpx.HTTPStatusError(
-                    f"transient {response.status_code}", request=response.request, response=response
-                )
+            if response.status_code in _TRANSIENT_STATUS_CODES and not is_last:
                 await asyncio.sleep(self.retry_backoff * attempt)
                 continue
 
@@ -103,6 +99,5 @@ class OpenAIProvider(BaseLLMProvider):
             payload = response.json()
             return payload["choices"][0]["message"]["content"]
 
-        # Defensive: loop must have either returned or raised above.
-        raise last_error if last_error else RuntimeError("provider call failed without an explicit error")
+        raise AssertionError("unreachable: _chat retry loop must return or raise")
 
