@@ -200,3 +200,24 @@ def test_provider_outage_returns_failed_status_and_does_not_leak_secrets(tmp_pat
     history_response = client.get("/api/v1/history").json()
     assert "ultra-secret-token-2222" not in str(history_response)
     assert history_response[0]["llm_status"] == "failed"
+
+
+def test_test_provider_endpoint_returns_structured_reason(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("app.main.OpenAIProvider", KeyAwareFakeProvider)
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+
+    before = client.post("/api/v1/settings/test-provider").json()
+    assert before["ok"] is False
+    assert "configured" in before["reason"]
+
+    saved = client.put(
+        "/api/v1/settings/provider",
+        json={"provider": "openai", "model": "gpt-test", "api_key": "sk-test-key-3333"},
+    )
+    assert saved.status_code == 200
+
+    after = client.post("/api/v1/settings/test-provider").json()
+    assert after["ok"] is True
+    assert "sk-test-key-3333" not in str(after)
