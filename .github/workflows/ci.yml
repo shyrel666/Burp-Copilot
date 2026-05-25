@@ -58,3 +58,10 @@ jobs:
         run: |
           cd burp-extension
           mvn test package
+      - name: Upload extension JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: burp-ai-extension-jar
+          path: burp-extension/target/burp-ai-extension-*.jar
+          if-no-files-found: error
+          retention-days: 14
