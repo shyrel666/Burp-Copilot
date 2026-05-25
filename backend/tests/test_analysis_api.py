@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.llm.base import HealthCheckResult
 from app.main import create_app
 from app.llm.fake_provider import VALID_RESPONSE
 
@@ -19,7 +20,8 @@ class KeyAwareFakeProvider:
         return VALID_RESPONSE
 
     async def health_check(self):
-        return bool(self.api_key)
+        ok = bool(self.api_key)
+        return HealthCheckResult(ok=ok, reason="ok" if ok else "API key is not configured")
 
 
 def test_analyze_redacts_before_persisting_and_returns_structured_result(tmp_path):

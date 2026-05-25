@@ -62,9 +62,10 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
         return public
 
     @app.post("/api/v1/settings/test-provider", dependencies=[require_token])
-    async def test_provider() -> dict[str, bool]:
+    async def test_provider() -> dict[str, str | bool]:
         provider = _build_provider(settings, provider_mode)
-        return {"ok": await provider.health_check()}
+        result = await provider.health_check()
+        return {"ok": result.ok, "reason": result.reason}
 
     return app
 

@@ -4,7 +4,7 @@ import os
 
 import httpx
 
-from app.llm.base import BaseLLMProvider
+from app.llm.base import BaseLLMProvider, HealthCheckResult
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -35,8 +35,27 @@ class OpenAIProvider(BaseLLMProvider):
             ]
         )
 
-    async def health_check(self) -> bool:
-        return bool(self.api_key)
+    async def health_check(self) -> HealthCheckResult:
+        if not self.api_key:
+            return HealthCheckResult(ok=False, reason="API key is not configured")
+        try:
+            async with self._client(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/models",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                )
+        except httpx.TimeoutException:
+            return HealthCheckResult(ok=False, reason="Provider request timed out")
+        except httpx.HTTPError as exc:
+            return HealthCheckResult(ok=False, reason=f"Provider unreachable: {type(exc).__name__}")
+        if response.status_code == 200:
+            return HealthCheckResult(ok=True, reason="Provider reachable")
+        if response.status_code in (401, 403):
+            return HealthCheckResult(ok=False, reason="Provider rejected the API key")
+        return HealthCheckResult(ok=False, reason=f"Provider returned HTTP {response.status_code}")
+
+    def _client(self, timeout: float) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=timeout)
 
     async def _chat(self, messages: list[dict[str, str]]) -> str:
         if not self.api_key:

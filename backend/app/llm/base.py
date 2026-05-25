@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class HealthCheckResult:
+    ok: bool
+    reason: str
 
 
 class BaseLLMProvider(ABC):
@@ -13,6 +20,5 @@ class BaseLLMProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def health_check(self) -> bool:
+    async def health_check(self) -> HealthCheckResult:
         raise NotImplementedError
-

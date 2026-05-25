@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.llm.base import BaseLLMProvider
+from app.llm.base import BaseLLMProvider, HealthCheckResult
 
 
 VALID_RESPONSE = (
@@ -27,6 +27,6 @@ class FakeLLMProvider(BaseLLMProvider):
     async def repair_json(self, invalid_text: str, error: str) -> str:
         return VALID_RESPONSE
 
-    async def health_check(self) -> bool:
-        return True
+    async def health_check(self) -> HealthCheckResult:
+        return HealthCheckResult(ok=True, reason="Fake provider is always healthy")
 
