@@ -24,16 +24,27 @@ class SettingsStore:
         settings["provider"] = provider
         settings["model"] = model
         settings["base_url"] = (base_url or "").strip()
-        if api_key is not None:
+        if provider == "ollama":
+            settings["api_key"] = ""
+        elif api_key is not None:
             settings["api_key"] = api_key
         self._write_raw(settings)
         return self.get_public_settings()
 
     def get_public_settings(self) -> ProviderSettingsResponse:
         settings = self._read_raw()
+        provider = settings.get("provider", "openai")
         api_key = settings.get("api_key") or ""
+        if provider == "ollama":
+            return ProviderSettingsResponse(
+                provider=provider,
+                model=settings.get("model", os.getenv("OLLAMA_MODEL", "llama3")),
+                has_api_key=False,
+                masked_api_key=None,
+                base_url=settings.get("base_url") or None,
+            )
         return ProviderSettingsResponse(
-            provider=settings.get("provider", "openai"),
+            provider=provider,
             model=settings.get("model", os.getenv("OPENAI_MODEL", "gpt-4o-mini")),
             has_api_key=bool(api_key),
             masked_api_key=_mask_api_key(api_key) if api_key else None,
@@ -42,6 +53,8 @@ class SettingsStore:
 
     def get_api_key(self) -> str | None:
         raw = self._read_raw()
+        if raw.get("provider") == "ollama":
+            return None
         if "api_key" in raw:
             stored = raw["api_key"]
             return stored if stored else None
@@ -49,8 +62,16 @@ class SettingsStore:
 
     def _read_raw(self) -> dict[str, str]:
         if not self.path.exists():
+            provider = os.getenv("LLM_PROVIDER", "openai")
+            if provider == "ollama":
+                return {
+                    "provider": provider,
+                    "model": os.getenv("OLLAMA_MODEL", "llama3"),
+                    "api_key": "",
+                    "base_url": os.getenv("OLLAMA_BASE_URL", ""),
+                }
             return {
-                "provider": os.getenv("LLM_PROVIDER", "openai"),
+                "provider": provider,
                 "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 "api_key": os.getenv("OPENAI_API_KEY", ""),
                 "base_url": os.getenv("OPENAI_BASE_URL", ""),

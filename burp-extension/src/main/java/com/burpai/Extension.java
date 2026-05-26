@@ -190,7 +190,7 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
                             + "This usually means the LLM provider is slow or unreachable.\n"
                             + "Check:\n"
                             + "  1. Backend URL and token are correct\n"
-                            + "  2. OPENAI_API_KEY is configured in backend .env\n"
+                            + "  2. Provider API key is configured in backend .env (or Ollama is running locally)\n"
                             + "  3. Network can reach the provider endpoint\n"
                             + "  4. Provider health check passes in the dashboard");
                     } else {

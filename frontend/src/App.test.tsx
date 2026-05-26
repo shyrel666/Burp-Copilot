@@ -187,6 +187,20 @@ describe('dashboard', () => {
     expect(screen.getByText('Failed')).toBeInTheDocument();
   });
 
+  test('ollama provider hides api key field and shows local notice', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await screen.findByText('sk-...1234');
+    await user.selectOptions(screen.getByLabelText(/provider/i), 'ollama');
+
+    expect(screen.getByLabelText(/model/i)).toHaveValue('llama3');
+    expect(screen.getByLabelText(/base url/i)).toHaveValue('http://localhost:11434');
+    expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/ollama runs locally and does not require an api key/i)).toBeInTheDocument();
+  });
+
   test('interrupted stream marks progress failed instead of waiting for a final result', async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

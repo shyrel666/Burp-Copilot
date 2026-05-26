@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.llm.base import BaseLLMProvider
+from app.llm.ollama_provider import OllamaProvider
 from app.llm.openai_provider import OpenAIProvider
 from app.models.schemas import ProviderName
 
@@ -23,5 +24,8 @@ def build_provider(config: ProviderConfig) -> BaseLLMProvider:
         if not config.base_url:
             raise ValueError("openai-compatible provider requires base_url")
         return OpenAIProvider(api_key=config.api_key, model=config.model, base_url=config.base_url)
+
+    if config.provider == ProviderName.OLLAMA.value:
+        return OllamaProvider(model=config.model, base_url=config.base_url)
 
     raise ValueError(f"Unsupported provider: {config.provider}")

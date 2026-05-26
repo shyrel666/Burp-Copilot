@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import asyncio
+import os
+
+import httpx
+
+from app.llm.base import BaseLLMProvider, HealthCheckResult
+
+
+_TRANSIENT_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
+
+_OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"
+_OLLAMA_DEFAULT_MODEL = "llama3"
+
+
+class OllamaProvider(BaseLLMProvider):
+    def __init__(
+        self,
+        model: str | None = None,
+        base_url: str | None = None,
+        *,
+        max_attempts: int = 3,
+        request_timeout: float = 120.0,
+        retry_backoff: float = 1.0,
+    ):
+        self.model = model or os.getenv("OLLAMA_MODEL", _OLLAMA_DEFAULT_MODEL)
+        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", _OLLAMA_DEFAULT_BASE_URL)).rstrip("/")
+        self.max_attempts = max_attempts
+        self.request_timeout = request_timeout
+        self.retry_backoff = retry_backoff
+
+    async def analyze(self, system_prompt: str, user_prompt: str) -> str:
+        return await self._chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+        )
+
+    async def repair_json(self, invalid_text: str, error: str) -> str:
+        return await self._chat(
+            [
+                {
+                    "role": "system",
+                    "content": "Return only valid JSON matching the requested schema. Do not add markdown.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Parser error: {error}\nInvalid output:\n{invalid_text}",
+                },
+            ]
+        )
+
+    async def health_check(self) -> HealthCheckResult:
+        try:
+            async with self._client(timeout=10.0) as client:
+                response = await client.get(f"{self.base_url}/api/tags")
+        except httpx.TimeoutException:
+            return HealthCheckResult(ok=False, reason="Ollama request timed out")
+        except httpx.HTTPError as exc:
+            return HealthCheckResult(ok=False, reason=f"Ollama unreachable: {type(exc).__name__}")
+        if response.status_code == 200:
+            return HealthCheckResult(ok=True, reason="Ollama is running")
+        return HealthCheckResult(ok=False, reason=f"Ollama returned HTTP {response.status_code}")
+
+    def _client(self, timeout: float) -> httpx.AsyncClient:
+        return httpx.AsyncClient(timeout=timeout)
+
+    async def _chat(self, messages: list[dict[str, str]]) -> str:
+        for attempt in range(1, self.max_attempts + 1):
+            is_last = attempt == self.max_attempts
+            try:
+                async with self._client(timeout=self.request_timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/v1/chat/completions",
+                        json={"model": self.model, "messages": messages, "temperature": 0.1},
+                    )
+            except (httpx.TimeoutException, httpx.TransportError):
+                if is_last:
+                    raise
+                await asyncio.sleep(self.retry_backoff * attempt)
+                continue
+
+            if response.status_code in _TRANSIENT_STATUS_CODES and not is_last:
+                await asyncio.sleep(self.retry_backoff * attempt)
+                continue
+
+            response.raise_for_status()
+            payload = response.json()
+            return payload["choices"][0]["message"]["content"]
+
+        raise AssertionError("unreachable: _chat retry loop must return or raise")

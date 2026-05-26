@@ -1,7 +1,7 @@
 import { AlertCircle, BookOpen, History, KeyRound, Play, ShieldCheck } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { analyzeTrafficStream, fetchHistory, fetchSettings, saveProviderSettings } from './api/client';
-import type { AnalysisHistoryItem, AnalysisResponse, Finding, Mode, ProviderSettings, StreamStatus } from './types';
+import type { AnalysisHistoryItem, AnalysisResponse, Finding, Mode, ProviderName, ProviderSettings, StreamStatus } from './types';
 
 type View = 'analyze' | 'history' | 'settings';
 
@@ -12,6 +12,16 @@ const emptySettings: ProviderSettings = {
   masked_api_key: null,
   base_url: null,
 };
+
+function defaultModelForProvider(provider: ProviderName): string {
+  if (provider === 'ollama') return 'llama3';
+  return 'gpt-4o-mini';
+}
+
+function defaultBaseUrlForProvider(provider: ProviderName): string | null {
+  if (provider === 'ollama') return 'http://localhost:11434';
+  return null;
+}
 
 export default function App() {
   const [view, setView] = useState<View>('analyze');
@@ -339,15 +349,20 @@ function SettingsPanel({
         Provider
         <select
           value={settings.provider}
-          onChange={(event) =>
+          onChange={(event) => {
+            const newProvider = event.target.value as ProviderSettings['provider'];
             setSettings({
               ...settings,
-              provider: event.target.value as ProviderSettings['provider'],
-            })
-          }
+              provider: newProvider,
+              model: defaultModelForProvider(newProvider),
+              base_url: defaultBaseUrlForProvider(newProvider),
+            });
+            setApiKey('');
+          }}
         >
           <option value="openai">openai</option>
           <option value="openai-compatible">openai-compatible</option>
+          <option value="ollama">ollama</option>
         </select>
       </label>
       <label>
@@ -362,19 +377,26 @@ function SettingsPanel({
           placeholder="http://127.0.0.1:11434/v1"
         />
       </label>
-      <label>
-        API key
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(event) => setApiKey(event.target.value)}
-          placeholder={settings.has_api_key ? 'Leave blank to keep current key' : 'Paste provider key'}
-        />
-      </label>
-      <div className="key-state">
-        <span>Configured key</span>
-        <strong>{settings.masked_api_key || 'Not configured'}</strong>
-      </div>
+      {settings.provider !== 'ollama' ? (
+        <label>
+          API key
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder={settings.has_api_key ? 'Leave blank to keep current key' : 'Paste provider key'}
+          />
+        </label>
+      ) : null}
+      {settings.provider !== 'ollama' ? (
+        <div className="key-state">
+          <span>Configured key</span>
+          <strong>{settings.masked_api_key || 'Not configured'}</strong>
+        </div>
+      ) : null}
+      {settings.provider === 'ollama' ? (
+        <p className="muted">Ollama runs locally and does not require an API key.</p>
+      ) : null}
       <button className="primary-action" disabled={loading}>
         <KeyRound aria-hidden="true" />
         Save Provider

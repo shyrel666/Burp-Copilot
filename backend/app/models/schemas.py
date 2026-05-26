@@ -39,6 +39,7 @@ class BodyOmittedReason(str, Enum):
 class ProviderName(str, Enum):
     OPENAI = "openai"
     OPENAI_COMPATIBLE = "openai-compatible"
+    OLLAMA = "ollama"
 
 
 class AnalysisMetadata(BaseModel):

@@ -1,5 +1,6 @@
 import pytest
 
+from app.llm.ollama_provider import OllamaProvider
 from app.llm.openai_provider import OpenAIProvider
 from app.llm.provider_registry import ProviderConfig, build_provider
 
@@ -32,6 +33,33 @@ def test_openai_compatible_requires_base_url():
         build_provider(
             ProviderConfig(provider="openai-compatible", model="gpt-compat", api_key="sk-test", base_url=None)
         )
+
+
+def test_build_provider_returns_ollama_provider_for_ollama_name():
+    provider = build_provider(
+        ProviderConfig(provider="ollama", model="llama3", api_key=None, base_url=None)
+    )
+
+    assert isinstance(provider, OllamaProvider)
+    assert provider.model == "llama3"
+    assert provider.base_url == "http://localhost:11434"
+
+
+def test_build_provider_ollama_with_custom_base_url():
+    provider = build_provider(
+        ProviderConfig(provider="ollama", model="mistral", api_key=None, base_url="http://192.168.1.10:11434")
+    )
+
+    assert isinstance(provider, OllamaProvider)
+    assert provider.base_url == "http://192.168.1.10:11434"
+
+
+def test_build_provider_ollama_ignores_api_key():
+    provider = build_provider(
+        ProviderConfig(provider="ollama", model="llama3", api_key="should-be-ignored", base_url=None)
+    )
+
+    assert isinstance(provider, OllamaProvider)
 
 
 def test_build_provider_rejects_unsupported_provider_name():
