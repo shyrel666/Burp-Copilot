@@ -176,7 +176,18 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
                 try {
                     setResult(AnalysisResultFormatter.forDisplay(get()));
                 } catch (Exception exc) {
-                    setResult("Backend request failed: " + exc.getMessage());
+                    String message = exc.getMessage() != null ? exc.getMessage() : exc.getClass().getSimpleName();
+                    if (message.contains("SocketTimeoutException") || message.contains("timed out") || message.contains("Read timed out")) {
+                        setResult("Backend request timed out.\n"
+                            + "This usually means the LLM provider is slow or unreachable.\n"
+                            + "Check:\n"
+                            + "  1. Backend URL and token are correct\n"
+                            + "  2. OPENAI_API_KEY is configured in backend .env\n"
+                            + "  3. Network can reach the provider endpoint\n"
+                            + "  4. Provider health check passes in the dashboard");
+                    } else {
+                        setResult("Backend request failed: " + message);
+                    }
                     api.logging().logToError("AI Analyzer backend request failed", exc);
                 }
             }

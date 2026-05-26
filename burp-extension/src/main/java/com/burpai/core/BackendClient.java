@@ -16,7 +16,7 @@ public class BackendClient {
     private final int readTimeoutMillis;
 
     public BackendClient(String backendUrl, String backendToken) {
-        this(backendUrl, backendToken, 5000, 45000);
+        this(backendUrl, backendToken, 5000, 120000);
     }
 
     BackendClient(String backendUrl, String backendToken, int connectTimeoutMillis, int readTimeoutMillis) {
