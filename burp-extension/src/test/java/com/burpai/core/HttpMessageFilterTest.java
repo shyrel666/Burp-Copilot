@@ -6,14 +6,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class HttpMessageFilterTest {
     @Test
-    void staticResourceOmitsResponseBody() {
+    void staticResourceKeepsResponseHeadersAndOmitsBody() {
         PreparedHttpMessage prepared = HttpMessageFilter.prepare(
-                "GET /assets/app.js HTTP/1.1\r\nHost: example.test\r\n\r\n",
-                "HTTP/1.1 200 OK\r\n\r\nconsole.log('asset')",
-                "https://example.test/assets/app.js"
+                "GET /assets/banner.webp HTTP/1.1\r\nHost: example.test\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nContent-Type: image/webp\r\n\r\nbinary-image-body",
+                "https://example.test/assets/banner.webp"
         );
 
-        assertNull(prepared.getResponseText());
+        assertTrue(prepared.getResponseText().contains("HTTP/1.1 200 OK"));
+        assertTrue(prepared.getResponseText().contains("Content-Type: image/webp"));
+        assertFalse(prepared.getResponseText().contains("binary-image-body"));
         assertEquals("static_resource", prepared.getBodyOmittedReason());
     }
 

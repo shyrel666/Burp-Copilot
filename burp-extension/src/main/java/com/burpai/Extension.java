@@ -54,9 +54,9 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
         if (!hasSelectedMessage(event)) {
             return items;
         }
-        JMenuItem analyze = new JMenuItem("AI Analyze");
+        JMenuItem analyze = new JMenuItem("AI Analyze (request + response)");
         analyze.addActionListener(ignored -> submitSelected(event, "analyze"));
-        JMenuItem learn = new JMenuItem("AI Learn Mode");
+        JMenuItem learn = new JMenuItem("AI Learn Mode (request + response)");
         learn.addActionListener(ignored -> submitSelected(event, "learn"));
         items.add(analyze);
         items.add(learn);
@@ -112,36 +112,44 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
         String targetUrl = message.targetUrl;
         PreparedHttpMessage prepared = HttpMessageFilter.prepare(request, response, targetUrl);
         String json = AnalysisRequestBuilder.build("burp", mode, prepared);
-        runInBackground("Analyzing selected traffic...", () -> {
+        String loadingMessage = response == null
+                ? "Analyzing selected request..."
+                : "Analyzing selected request and response...";
+        runInBackground(loadingMessage, () -> {
             BackendClient client = new BackendClient(backendUrlField.getText(), tokenField.getText());
             return client.analyze(json);
         });
     }
 
     private static boolean hasSelectedMessage(ContextMenuEvent event) {
-        if (!event.selectedRequestResponses().isEmpty()) {
+        Optional<MessageEditorHttpRequestResponse> editor = event.messageEditorRequestResponse();
+        if (editor.isPresent() && editor.get().requestResponse().request() != null) {
             return true;
         }
-        Optional<MessageEditorHttpRequestResponse> editor = event.messageEditorRequestResponse();
-        return editor.isPresent() && editor.get().requestResponse().request() != null;
+        return !event.selectedRequestResponses().isEmpty();
     }
 
     private static SelectedMessage extractMessage(ContextMenuEvent event) {
-        if (!event.selectedRequestResponses().isEmpty()) {
-            HttpRequestResponse selected = event.selectedRequestResponses().get(0);
-            return new SelectedMessage(selected.request(), selected.response(), selected.request().url());
-        }
         Optional<MessageEditorHttpRequestResponse> editor = event.messageEditorRequestResponse();
         if (editor.isPresent()) {
-            HttpRequestResponse rr = editor.get().requestResponse();
-            HttpRequest request = rr.request();
-            if (request == null) {
-                return null;
+            SelectedMessage message = selectedMessageFrom(editor.get().requestResponse());
+            if (message != null) {
+                return message;
             }
-            HttpResponse response = rr.response();
-            return new SelectedMessage(request, response, request.url());
+        }
+        if (!event.selectedRequestResponses().isEmpty()) {
+            return selectedMessageFrom(event.selectedRequestResponses().get(0));
         }
         return null;
+    }
+
+    private static SelectedMessage selectedMessageFrom(HttpRequestResponse rr) {
+        HttpRequest request = rr.request();
+        if (request == null) {
+            return null;
+        }
+        HttpResponse response = rr.response();
+        return new SelectedMessage(request, response, request.url());
     }
 
     private static final class SelectedMessage {

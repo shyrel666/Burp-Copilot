@@ -8,7 +8,7 @@ import java.util.Set;
 public final class HttpMessageFilter {
     public static final int MAX_TOTAL_CHARS = 256 * 1024;
     private static final Set<String> STATIC_EXTENSIONS = new HashSet<>(Arrays.asList(
-            ".css", ".gif", ".ico", ".jpeg", ".jpg", ".js", ".map", ".png", ".svg", ".woff", ".woff2"
+            ".avif", ".css", ".gif", ".ico", ".jpeg", ".jpg", ".js", ".map", ".png", ".svg", ".webp", ".woff", ".woff2"
     ));
 
     private HttpMessageFilter() {
@@ -22,7 +22,14 @@ public final class HttpMessageFilter {
         String omittedReason = null;
 
         if (isStaticResource(targetUrl, guardedRequest)) {
-            return new PreparedHttpMessage(guardedRequest, null, targetUrl, false, false, "static_resource");
+            return new PreparedHttpMessage(
+                    guardedRequest,
+                    omitBody(guardedResponse, "static resource"),
+                    targetUrl,
+                    false,
+                    false,
+                    "static_resource"
+            );
         }
 
         if (hasBinaryBody(guardedRequest) || hasBinaryBody(guardedResponse)) {
