@@ -1,0 +1,61 @@
+.worktrees/
+worktrees/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Local app data
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# Node
+node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+
+# Java / Maven / Gradle
+target/
+*.class
+*.jar
+*.war
+*.ear
+.gradle/
+burp-extension/target/
+
+# Burp and traffic artifacts
+*.burp
+*.burp.log
+*.har
+*.pcap
+*.pcapng
+captures/
+traffic-samples/
+
+# Editors and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
