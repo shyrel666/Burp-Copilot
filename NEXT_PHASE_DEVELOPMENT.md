@@ -2,11 +2,13 @@
 
 This document is for future AI agents continuing the MVP. Keep changes small, test-first, and privacy-preserving.
 
+Status note: this guide reflects the current `main` branch as of 2026-05-26. Earlier Phase 2 remediation plans in `docs/superpowers/` are historical once their listed behavior exists in code and tests.
+
 ## Current MVP Snapshot
 
-- Branch: `feature/burp-ai-mvp`
-- Backend: FastAPI, SQLite, redaction, input guards, provider settings, OpenAI-compatible provider.
-- Frontend: React + Vite dashboard for manual analysis, history, and provider settings.
+- Branch: `main`
+- Backend: FastAPI, SQLite, redaction, input guards, provider registry, provider settings, OpenAI/OpenAI-compatible/Ollama providers, and direct SSE streaming for single analyses.
+- Frontend: React + Vite dashboard for manual analysis, streaming progress, history, and provider settings.
 - Burp extension: Java Montoya thin client with context menu actions and async backend calls.
 - Open-source basics: Apache-2.0, README, SECURITY, CONTRIBUTING, CI, release checklist.
 
@@ -41,68 +43,64 @@ The Burp extension requires Maven and JDK 17 or newer. A JDK 8-only machine can 
 
 ## Phase 2: Provider Reliability
 
+Status: complete; keep stable.
+
 Goal: Make cloud provider usage stable enough for real local use.
 
-- Add provider registry with explicit provider names: `openai`, `openai-compatible`, later `anthropic`.
-- Add provider health endpoint that uses the current settings and reports actionable failure reasons without exposing secrets.
-- Add retry policy for transient provider failures with bounded attempts and timeouts.
-- Add response normalization for model outputs that wrap JSON in markdown.
-- Add tests proving settings changes take effect without backend restart.
-- Add tests proving provider errors do not persist raw prompts or secrets.
+- Provider registry exists with explicit provider names: `openai`, `openai-compatible`, and `ollama`.
+- Provider health endpoint uses current settings and reports actionable failure reasons without exposing secrets.
+- OpenAI-compatible providers use a configured base URL.
+- Provider calls use bounded retry and timeout behavior.
+- Response parsing normalizes model outputs that wrap JSON in markdown.
+- Tests cover no-restart settings changes, invalid provider output, and privacy boundaries.
 
 Acceptance:
 
 - Saving a new provider key/model changes subsequent analyze calls immediately.
 - Invalid provider output returns structured `llm_status: failed` instead of crashing.
 - Public settings never include plaintext keys.
+- Provider errors do not persist raw prompts or secrets.
 
 ## Phase 3: Streaming Analysis
 
-Goal: Add real-time dashboard feedback without introducing Celery yet.
+Status: core complete; stabilize and keep compatible.
 
-- Add FastAPI SSE endpoint for direct single analysis streaming.
-- Keep non-streaming `/api/v1/analyze` as the stable Burp-compatible endpoint.
-- Stream status events first: `redacting`, `calling_provider`, `parsing`, `persisted`, `failed`.
-- Only stream redacted prompts/results.
-- Add frontend streaming result panel.
+Goal: Add real-time dashboard feedback without introducing Celery.
+
+- FastAPI exposes a direct single-analysis SSE endpoint.
+- Non-streaming `/api/v1/analyze` remains the stable Burp-compatible endpoint.
+- Status events are: `redacting`, `calling_provider`, `parsing`, `persisted`, `failed`.
+- Streaming responses expose only redacted prompts/results.
+- Frontend shows streaming progress and visible failure states.
 
 Acceptance:
 
 - Dashboard shows progress for slow LLM calls.
 - Burp extension remains compatible with the non-streaming endpoint.
 - Stream failures produce visible UI errors and no raw traffic logs.
+- Interrupted streams do not leave the UI waiting forever.
 
 ## Phase 4: Local Model Support
 
-Goal: Add Ollama as a privacy-first alternative.
+Status: core complete; document and manually verify common local setups.
 
-- Add `ollama` provider with configurable base URL and model.
-- Add provider-specific timeout defaults.
-- Add docs for running Ollama locally.
-- Add tests with a fake Ollama transport; do not require Ollama in CI.
+Goal: Keep Ollama as a privacy-first alternative.
+
+- `ollama` provider exists with configurable base URL and model.
+- Ollama uses provider-specific timeout defaults.
+- Ollama setup docs exist.
+- Tests use fake transports and do not require Ollama in CI.
 
 Acceptance:
 
 - Users can switch provider to Ollama through settings.
 - No cloud key is required for Ollama mode.
 - Analyze/learn outputs use the same schema as cloud providers.
+- Switching to Ollama clears stored cloud API keys from public/runtime provider use.
 
-## Phase 5: Batch And Queue Work
+## Phase 5: Burp Extension Hardening
 
-Goal: Support longer-running or multiple-message analyses.
-
-- Add Redis/Celery only after single-message streaming is stable.
-- Add task status model: `queued`, `running`, `done`, `failed`, `cancelled`.
-- Add cancellation support.
-- Add history filters by mode, severity, target host, and time.
-
-Acceptance:
-
-- Batch jobs do not block API workers.
-- Queue payloads contain redacted traffic only.
-- Failed jobs retain structured error state.
-
-## Phase 6: Burp Extension Hardening
+Status: recommended next implementation phase.
 
 Goal: Improve the Burp user workflow while preserving thin-client boundaries.
 
@@ -116,14 +114,38 @@ Acceptance:
 
 - Users can restart Burp without retyping backend URL/token.
 - Backend unavailable, 401, timeout, and malformed response states are readable.
+- Extension remains a thin client: no redaction, LLM calls, or persistence of raw traffic in Burp.
 - No passive scanner hooks are added in this phase.
+
+## Phase 6: Batch And Queue Work
+
+Status: design-gated; do not implement directly from this checklist.
+
+Goal: Support longer-running or multiple-message analyses only after a separate design pass.
+
+Before implementation, create a design document that answers:
+
+- Whether the MVP needs Redis/Celery now, or whether a lighter local queue is enough for single-user workflows.
+- Where redaction happens before queueing, and how to prove queue payloads contain redacted traffic only.
+- Task state schema: `queued`, `running`, `done`, `failed`, `cancelled`.
+- Cancellation semantics for queued tasks, running provider calls, and persisted history rows.
+- SQLite migration and compatibility plan.
+- History filtering model for mode, severity, target host, and time.
+- Local setup and release implications.
+
+Acceptance:
+
+- Design is reviewed before adding Redis, Celery, or a task queue dependency.
+- Batch jobs do not block API workers.
+- Queue payloads contain redacted traffic only.
+- Failed and cancelled jobs retain structured error state.
 
 ## Phase 7: Packaging And Release
 
 Goal: Prepare a public GitHub release.
 
 - Add Docker Compose for backend + frontend only; keep Postgres/Ollama optional.
-- Add GitHub release workflow that uploads the Burp extension JAR.
+- Add GitHub release workflow that publishes release artifacts. CI already builds and uploads the Burp extension JAR for push/pull-request workflows.
 - Add generated API docs or OpenAPI export.
 - Run a secret scan before tagging.
 - Tag the release as `v0.1.0-mvp` only after CI and manual Burp loading pass.
@@ -136,11 +158,12 @@ Acceptance:
 
 ## Suggested First Follow-Up Issue
 
-Title: Enforce backend token in all local clients and document setup
+Title: Harden Burp extension settings and result display
 
-Status: mostly implemented in current branch. Before merging, verify:
+Status: next recommended work. Scope:
 
-- `BACKEND_TOKEN` protects analyze, history, settings, and provider test endpoints.
-- `VITE_BACKEND_TOKEN` is sent by the dashboard when configured.
-- Burp extension users can enter the same token in the suite tab.
-- Health and CORS preflight remain unauthenticated.
+- Persist Backend URL and Backend Token between Burp restarts when Montoya persistence APIs are available.
+- Display the backend's already-structured `AnalysisResponse` fields as readable summary, status, and finding rows.
+- Improve timeout, 401, backend unavailable, and malformed response messages.
+- Keep the extension thin and avoid passive scanner hooks.
+- Add or update Java unit tests for formatting, request construction, truncation, and error message handling.

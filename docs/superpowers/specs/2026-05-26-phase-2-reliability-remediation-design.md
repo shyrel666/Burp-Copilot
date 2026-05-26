@@ -1,10 +1,12 @@
 # Phase 2 Reliability Remediation Design
 
-**Summary:** This design defines the follow-up work required to make Phase 2 in `NEXT_PHASE_DEVELOPMENT.md` actually shippable by closing the provider registry gap, adding explicit `openai-compatible` support, restoring full verification, and adding direct acceptance-test coverage.
+> Status: implemented/superseded on the current `main` branch. Keep this document for historical design context; use `NEXT_PHASE_DEVELOPMENT.md` as the active roadmap.
+
+**Summary:** This historical design defined the follow-up work required to make Phase 2 in `NEXT_PHASE_DEVELOPMENT.md` shippable by closing the provider registry gap, adding explicit `openai-compatible` support, restoring full verification, and adding direct acceptance-test coverage.
 
 ## Context
 
-The current codebase already includes most of the reliability primitives for Phase 2:
+At the time this design was written, the codebase already included most of the reliability primitives for Phase 2:
 
 - `backend/app/llm/openai_provider.py` implements retries, timeouts, and provider health checks.
 - `backend/app/llm/result_parser.py` normalizes markdown-wrapped JSON and validates parsed output.
@@ -12,18 +14,18 @@ The current codebase already includes most of the reliability primitives for Pha
 - `backend/app/services/settings_store.py` persists provider settings while masking public API key output.
 - `backend/tests/test_openai_provider.py` and `backend/tests/test_settings.py` already validate part of the behavior.
 
-The main remaining gap is architectural: the saved `provider` setting does not actually control runtime provider dispatch. The current `_build_provider()` path in `backend/app/main.py` always builds `OpenAIProvider` except for fake test modes. Because of that, Phase 2 is not fully complete even though several supporting behaviors already exist.
+The main gap at design time was architectural: the saved `provider` setting did not control runtime provider dispatch. That gap is now closed on the current `main` branch.
 
 ## Problem Statement
 
-Phase 2 cannot be marked complete until the implementation matches the documented scope in `NEXT_PHASE_DEVELOPMENT.md:42-57`.
+At design time, Phase 2 could not be marked complete until the implementation matched the documented scope in `NEXT_PHASE_DEVELOPMENT.md:42-57`.
 
 The unresolved issues are:
 
-- No explicit provider registry exists.
-- `openai-compatible` is named in the spec but not implemented in runtime dispatch.
-- Some acceptance paths rely on indirect evidence instead of direct tests.
-- Full verification is currently blocked by local environment issues.
+- No explicit provider registry existed.
+- `openai-compatible` was named in the spec but not wired into runtime dispatch.
+- Some acceptance paths relied on indirect evidence instead of direct tests.
+- Full verification was blocked by local environment issues.
 
 ## Goals
 

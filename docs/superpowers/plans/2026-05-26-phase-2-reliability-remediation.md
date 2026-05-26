@@ -1,5 +1,7 @@
 # Phase 2 Reliability Remediation Implementation Plan
 
+> Status: implemented/superseded on the current `main` branch. Do not execute this as an active task list unless first comparing it against current code and tests. Use `NEXT_PHASE_DEVELOPMENT.md` as the active roadmap.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the remaining Phase 2 reliability gaps by making provider selection explicit, adding first-class `openai-compatible` support, restoring runnable verification, and adding direct acceptance-test coverage.
