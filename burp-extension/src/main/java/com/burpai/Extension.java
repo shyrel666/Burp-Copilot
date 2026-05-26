@@ -11,6 +11,8 @@ import burp.api.montoya.ui.contextmenu.MessageEditorHttpRequestResponse;
 import com.burpai.core.AnalysisRequestBuilder;
 import com.burpai.core.AnalysisResultFormatter;
 import com.burpai.core.BackendClient;
+import com.burpai.core.BackendErrorMessage;
+import com.burpai.core.ExtensionSettings;
 import com.burpai.core.HttpMessageFilter;
 import com.burpai.core.PreparedHttpMessage;
 
@@ -26,22 +28,33 @@ import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
+import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.InterruptedException;
 
 public class Extension implements BurpExtension, ContextMenuItemsProvider {
     private MontoyaApi api;
+    private ExtensionSettings settings;
     private JTextField backendUrlField;
     private JTextField tokenField;
     private JTextArea resultArea;
+    private JButton cancelButton;
+    private JLabel statusLabel;
+    private SwingWorker<String, Void> activeWorker;
+    private Timer elapsedTimer;
+    private int elapsedSeconds;
 
     @Override
     public void initialize(MontoyaApi api) {
         this.api = api;
+        this.settings = new ExtensionSettings(api);
         api.extension().setName("AI HTTP Analyzer");
         api.userInterface().registerSuiteTab("AI Analyzer", createPanel());
         api.userInterface().registerContextMenuItemsProvider(this);
@@ -65,30 +78,57 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
 
     private JPanel createPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        backendUrlField = new JTextField("http://localhost:8000");
-        tokenField = new JTextField("");
+
+        backendUrlField = new JTextField(settings.getBackendUrl());
+        tokenField = new JTextField(settings.getBackendToken());
+
         JButton healthButton = new JButton("Test Backend");
         healthButton.addActionListener(ignored -> testBackend());
+        JButton saveButton = new JButton("Save Settings");
+        saveButton.addActionListener(ignored -> saveSettings());
 
-        JPanel settings = new JPanel();
-        settings.setLayout(new BoxLayout(settings, BoxLayout.Y_AXIS));
-        settings.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        settings.add(labeledRow("Backend URL", backendUrlField));
-        settings.add(Box.createVerticalStrut(4));
-        settings.add(labeledRow("Backend Token", tokenField));
-        settings.add(Box.createVerticalStrut(4));
-        JPanel buttonRow = new JPanel(new BorderLayout());
+        JPanel settingsPanel = new JPanel();
+        settingsPanel.setLayout(new BoxLayout(settingsPanel, BoxLayout.Y_AXIS));
+        settingsPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        settingsPanel.add(labeledRow("Backend URL", backendUrlField));
+        settingsPanel.add(Box.createVerticalStrut(4));
+        settingsPanel.add(labeledRow("Backend Token", tokenField));
+        settingsPanel.add(Box.createVerticalStrut(4));
+        JPanel buttonRow = new JPanel(new BorderLayout(8, 0));
+        JPanel leftButtons = new JPanel();
+        leftButtons.add(saveButton);
+        buttonRow.add(leftButtons, BorderLayout.WEST);
         buttonRow.add(healthButton, BorderLayout.EAST);
         buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, healthButton.getPreferredSize().height + 4));
-        settings.add(buttonRow);
+        settingsPanel.add(buttonRow);
 
         resultArea = new JTextArea();
         resultArea.setEditable(false);
         resultArea.setLineWrap(true);
         resultArea.setWrapStyleWord(true);
-        panel.add(settings, BorderLayout.NORTH);
+        resultArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
+
+        statusLabel = new JLabel("Ready");
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+
+        cancelButton = new JButton("Cancel");
+        cancelButton.setEnabled(false);
+        cancelButton.addActionListener(ignored -> cancelActiveWorker());
+        JPanel statusRow = new JPanel(new BorderLayout(4, 0));
+        statusRow.add(statusLabel, BorderLayout.CENTER);
+        statusRow.add(cancelButton, BorderLayout.EAST);
+
+        panel.add(settingsPanel, BorderLayout.NORTH);
         panel.add(new JScrollPane(resultArea), BorderLayout.CENTER);
+        panel.add(statusRow, BorderLayout.SOUTH);
         return panel;
+    }
+
+    private void saveSettings() {
+        settings.setBackendUrl(backendUrlField.getText());
+        settings.setBackendToken(tokenField.getText());
+        setResult("Settings saved. They will persist across Burp restarts.");
+        api.logging().logToOutput("Extension settings saved.");
     }
 
     private static JPanel labeledRow(String labelText, JTextField field) {
@@ -172,8 +212,14 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
     }
 
     private void runInBackground(String loadingMessage, BackendTask task) {
+        cancelActiveWorker();
         setResult(loadingMessage);
-        new SwingWorker<String, Void>() {
+        statusLabel.setText(loadingMessage);
+        cancelButton.setEnabled(true);
+        elapsedSeconds = 0;
+        startElapsedTimer();
+
+        SwingWorker<String, Void> worker = new SwingWorker<String, Void>() {
             @Override
             protected String doInBackground() throws Exception {
                 return task.run();
@@ -181,25 +227,54 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
 
             @Override
             protected void done() {
+                stopElapsedTimer();
+                cancelButton.setEnabled(false);
                 try {
-                    setResult(AnalysisResultFormatter.forDisplay(get()));
+                    String result = get();
+                    setResult(AnalysisResultFormatter.forDisplay(result));
+                    statusLabel.setText("Completed (" + elapsedSeconds + "s)");
+                } catch (CancellationException exc) {
+                    setResult("Request was cancelled.");
+                    statusLabel.setText("Cancelled");
+                } catch (InterruptedException exc) {
+                    setResult("Request was interrupted.");
+                    statusLabel.setText("Interrupted");
+                    Thread.currentThread().interrupt();
                 } catch (Exception exc) {
-                    String message = exc.getMessage() != null ? exc.getMessage() : exc.getClass().getSimpleName();
-                    if (message.contains("SocketTimeoutException") || message.contains("timed out") || message.contains("Read timed out")) {
-                        setResult("Backend request timed out.\n"
-                            + "This usually means the LLM provider is slow or unreachable.\n"
-                            + "Check:\n"
-                            + "  1. Backend URL and token are correct\n"
-                            + "  2. Provider API key is configured in backend .env (or Ollama is running locally)\n"
-                            + "  3. Network can reach the provider endpoint\n"
-                            + "  4. Provider health check passes in the dashboard");
-                    } else {
-                        setResult("Backend request failed: " + message);
-                    }
+                    String errorMessage = BackendErrorMessage.forException(exc);
+                    setResult(errorMessage);
+                    statusLabel.setText("Failed (" + elapsedSeconds + "s)");
                     api.logging().logToError("AI Analyzer backend request failed", exc);
                 }
             }
-        }.execute();
+        };
+        activeWorker = worker;
+        worker.execute();
+    }
+
+    private void cancelActiveWorker() {
+        if (activeWorker != null && !activeWorker.isDone()) {
+            activeWorker.cancel(true);
+            activeWorker = null;
+        }
+        stopElapsedTimer();
+        cancelButton.setEnabled(false);
+    }
+
+    private void startElapsedTimer() {
+        stopElapsedTimer();
+        elapsedTimer = new Timer(1000, ignored -> {
+            elapsedSeconds++;
+            statusLabel.setText(statusLabel.getText().replaceAll("\\(\\d+s\\)", "").trim() + " (" + elapsedSeconds + "s)");
+        });
+        elapsedTimer.start();
+    }
+
+    private void stopElapsedTimer() {
+        if (elapsedTimer != null) {
+            elapsedTimer.stop();
+            elapsedTimer = null;
+        }
     }
 
     private void setResult(String text) {

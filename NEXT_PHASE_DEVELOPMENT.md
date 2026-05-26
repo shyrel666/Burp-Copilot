@@ -100,7 +100,7 @@ Acceptance:
 
 ## Phase 5: Burp Extension Hardening
 
-Status: recommended next implementation phase.
+Status: core complete; add manual test checklist for Burp Proxy, Repeater, and message editor contexts before release.
 
 Goal: Improve the Burp user workflow while preserving thin-client boundaries.
 
@@ -158,12 +158,10 @@ Acceptance:
 
 ## Suggested First Follow-Up Issue
 
-Title: Harden Burp extension settings and result display
+Title: Design batch and queue architecture for Phase 6
 
 Status: next recommended work. Scope:
 
-- Persist Backend URL and Backend Token between Burp restarts when Montoya persistence APIs are available.
-- Display the backend's already-structured `AnalysisResponse` fields as readable summary, status, and finding rows.
-- Improve timeout, 401, backend unavailable, and malformed response messages.
+- Create a design document answering the Phase 6 questions (Redis/Celery vs lighter queue, redaction before queueing, task state schema, cancellation semantics, SQLite migration, history filtering).
+- Do not add Redis, Celery, or a task queue dependency before design review.
 - Keep the extension thin and avoid passive scanner hooks.
-- Add or update Java unit tests for formatting, request construction, truncation, and error message handling.
