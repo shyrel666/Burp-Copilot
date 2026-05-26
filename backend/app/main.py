@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from app.llm.fake_provider import FakeLLMProvider
 from app.llm.openai_provider import OpenAIProvider
@@ -52,6 +54,19 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
         service = AnalysisService(history, provider)
         return await service.analyze(request)
 
+    @app.post("/api/v1/analyze/stream", dependencies=[require_token])
+    async def stream_analyze(request: AnalyzeRequest):
+        try:
+            provider = _resolve_provider()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        service = AnalysisService(history, provider)
+        return StreamingResponse(
+            _encode_sse(service.analyze_with_progress(request)),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache"},
+        )
+
     @app.get("/api/v1/history", dependencies=[require_token])
     async def list_history():
         return history.list()
@@ -82,6 +97,11 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
         return {"ok": result.ok, "reason": result.reason}
 
     return app
+
+
+async def _encode_sse(events):
+    async for event_name, payload in events:
+        yield f"event: {event_name}\ndata: {json.dumps(payload, separators=(',', ':'))}\n\n"
 
 
 def _build_provider(settings: SettingsStore, provider_mode: str | None):

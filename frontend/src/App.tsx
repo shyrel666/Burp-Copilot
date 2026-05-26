@@ -1,7 +1,7 @@
 import { AlertCircle, BookOpen, History, KeyRound, Play, ShieldCheck } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
-import { analyzeTraffic, fetchHistory, fetchSettings, saveProviderSettings } from './api/client';
-import type { AnalysisHistoryItem, AnalysisResponse, Finding, Mode, ProviderSettings } from './types';
+import { analyzeTrafficStream, fetchHistory, fetchSettings, saveProviderSettings } from './api/client';
+import type { AnalysisHistoryItem, AnalysisResponse, Finding, Mode, ProviderSettings, StreamStatus } from './types';
 
 type View = 'analyze' | 'history' | 'settings';
 
@@ -20,6 +20,7 @@ export default function App() {
   const [requestText, setRequestText] = useState('');
   const [responseText, setResponseText] = useState('');
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const [streamStatuses, setStreamStatuses] = useState<StreamStatus[]>([]);
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
   const [settings, setSettings] = useState<ProviderSettings>(emptySettings);
   const [apiKey, setApiKey] = useState('');
@@ -56,16 +57,22 @@ export default function App() {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setAnalysis(null);
+    setStreamStatuses([]);
     try {
-      const result = await analyzeTraffic({
-        mode,
-        requestText,
-        responseText,
-        targetUrl,
-      });
+      const result = await analyzeTrafficStream(
+        {
+          mode,
+          requestText,
+          responseText,
+          targetUrl,
+        },
+        (status) => setStreamStatuses((statuses) => [...statuses, status]),
+      );
       setAnalysis(result);
       await loadHistory();
     } catch (exc) {
+      setStreamStatuses((statuses) => [...statuses, 'failed']);
       setError(errorMessage(exc));
     } finally {
       setLoading(false);
@@ -181,7 +188,7 @@ export default function App() {
                 {loading ? 'Analyzing...' : 'Analyze'}
               </button>
             </form>
-            <AnalysisResult analysis={analysis} />
+            <AnalysisResult analysis={analysis} streamStatuses={streamStatuses} />
           </section>
         ) : null}
 
@@ -201,12 +208,33 @@ export default function App() {
   );
 }
 
-function AnalysisResult({ analysis }: { analysis: AnalysisResponse | null }) {
+function AnalysisResult({ analysis, streamStatuses }: { analysis: AnalysisResponse | null; streamStatuses: StreamStatus[] }) {
+  const streamFailed = streamStatuses.includes('failed');
   if (!analysis) {
     return (
-      <section className="result-panel empty-state">
-        <ShieldCheck aria-hidden="true" />
-        <p>Submit a request to view redacted findings.</p>
+      <section className={streamStatuses.length ? 'result-panel' : 'result-panel empty-state'}>
+        {streamStatuses.length ? (
+          <>
+            <div className="result-header">
+              <div>
+                <h2>{streamFailed ? 'Streaming failed' : 'Streaming analysis'}</h2>
+                <span>{streamFailed ? 'Analysis did not complete' : 'Waiting for final result'}</span>
+              </div>
+            </div>
+            <ProgressList statuses={streamStatuses} />
+            {streamFailed ? (
+              <div className="notice result-error" role="alert">
+                <AlertCircle aria-hidden="true" />
+                Stream ended without a result. The analysis could not be completed.
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <ShieldCheck aria-hidden="true" />
+            <p>Submit a request to view redacted findings.</p>
+          </>
+        )}
       </section>
     );
   }
@@ -219,12 +247,30 @@ function AnalysisResult({ analysis }: { analysis: AnalysisResponse | null }) {
         </div>
         <span className="status-pill">{analysis.redaction_applied ? 'Redacted' : 'Not redacted'}</span>
       </div>
+      {analysis.llm_status === 'failed' ? (
+        <div className="notice result-error" role="alert">
+          <AlertCircle aria-hidden="true" />
+          Analysis failed. The provider response could not be converted into structured findings.
+        </div>
+      ) : null}
+      <ProgressList statuses={streamStatuses} />
       <div className="findings-list">
         {analysis.findings.map((finding) => (
           <FindingCard key={`${finding.title}-${finding.evidence}`} finding={finding} />
         ))}
       </div>
     </section>
+  );
+}
+
+function ProgressList({ statuses }: { statuses: StreamStatus[] }) {
+  if (statuses.length === 0) return null;
+  return (
+    <ol className="progress-list" aria-label="Analysis progress">
+      {statuses.map((status, index) => (
+        <li key={`${status}-${index}`}>{streamStatusLabel(status)}</li>
+      ))}
+    </ol>
   );
 }
 
@@ -341,6 +387,11 @@ function viewTitle(view: View) {
   if (view === 'history') return 'Analysis history';
   if (view === 'settings') return 'Provider settings';
   return 'Manual analysis';
+}
+
+function streamStatusLabel(status: StreamStatus) {
+  if (status === 'calling_provider') return 'Calling provider';
+  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 function errorMessage(error: unknown) {

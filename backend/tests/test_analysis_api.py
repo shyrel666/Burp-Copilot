@@ -1,8 +1,10 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from app.llm.base import HealthCheckResult
-from app.main import create_app
 from app.llm.fake_provider import VALID_RESPONSE
+from app.main import create_app
 
 
 class KeyAwareFakeProvider:
@@ -199,7 +201,7 @@ class FailingProvider:
 
 
 def test_provider_outage_returns_failed_status_and_does_not_leak_secrets(tmp_path, monkeypatch, caplog):
-    monkeypatch.setattr("app.main.OpenAIProvider", FailingProvider)
+    monkeypatch.setattr("app.main.build_provider", lambda config: FailingProvider())
     app = create_app(data_dir=tmp_path)
     client = TestClient(app)
 
@@ -275,6 +277,37 @@ class CapturingProvider:
 
     async def health_check(self):
         return HealthCheckResult(ok=True, reason="ok")
+
+
+
+def test_target_url_query_secrets_are_redacted_before_provider_and_history(tmp_path, monkeypatch):
+    provider = CapturingProvider()
+    monkeypatch.setattr("app.main.build_provider", lambda config: provider)
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/analyze",
+        json={
+            "source": "dashboard",
+            "mode": "analyze",
+            "target_url": "https://example.test/callback?code=super-code-123&token=super-token-456&view=profile",
+            "request_text": "GET /callback HTTP/1.1\r\nHost: example.test\r\n\r\n",
+            "metadata": {"content_encoding": "utf-8"},
+        },
+    )
+
+    assert response.status_code == 200
+    prompt = provider.calls[-1][1]
+    assert "super-code-123" not in prompt
+    assert "super-token-456" not in prompt
+    assert "code=[REDACTED]" in prompt
+    assert "token=[REDACTED]" in prompt
+    assert "view=profile" in prompt
+    history = client.get("/api/v1/history").json()
+    assert "super-code-123" not in str(history)
+    assert "super-token-456" not in str(history)
+    assert history[0]["target_url"] == "https://example.test/callback?code=[REDACTED]&token=[REDACTED]&view=profile"
 
 
 def test_saved_provider_model_and_base_url_are_used_without_restart(tmp_path, monkeypatch):
@@ -368,3 +401,169 @@ def test_repair_returning_valid_json_but_invalid_schema_still_fails(tmp_path, mo
     assert response.json()["llm_status"] == "failed"
     history = client.get("/api/v1/history").json()
     assert history[0]["llm_status"] == "failed"
+
+
+def test_stream_analyze_emits_progress_result_and_no_raw_secrets(tmp_path):
+    app = create_app(data_dir=tmp_path, provider_mode="fake")
+    client = TestClient(app)
+    secret = "stream-secret-7777"
+
+    with client.stream(
+        "POST",
+        "/api/v1/analyze/stream",
+        json={
+            "source": "dashboard",
+            "mode": "analyze",
+            "request_text": (
+                "POST /login HTTP/1.1\r\n"
+                "Host: example.test\r\n"
+                f"Authorization: Bearer {secret}\r\n\r\n"
+                f"password={secret}"
+            ),
+            "metadata": {"content_encoding": "utf-8"},
+        },
+    ) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        body = response.read().decode("utf-8")
+
+    events = _decode_sse(body)
+    statuses = [data["status"] for event, data in events if event == "status"]
+    result = [data["analysis"] for event, data in events if event == "result"][0]
+
+    assert statuses == ["redacting", "calling_provider", "parsing", "persisted"]
+    assert result["llm_status"] == "ok"
+    assert secret not in body
+    assert client.get("/api/v1/history").json()[0]["llm_status"] == "ok"
+
+
+def test_stream_analyze_emits_failed_status_for_unusable_provider_output(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.main.build_provider", lambda config: BrokenJsonProvider())
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/api/v1/analyze/stream",
+        json={
+            "source": "dashboard",
+            "mode": "analyze",
+            "request_text": "GET / HTTP/1.1\r\nHost: example.test\r\n\r\n",
+            "metadata": {"content_encoding": "utf-8"},
+        },
+    ) as response:
+        assert response.status_code == 200
+        body = response.read().decode("utf-8")
+
+    events = _decode_sse(body)
+    statuses = [data["status"] for event, data in events if event == "status"]
+    result = [data["analysis"] for event, data in events if event == "result"][0]
+
+    assert statuses[-1] == "failed"
+    assert result["llm_status"] == "failed"
+    assert client.get("/api/v1/history").json()[0]["llm_status"] == "failed"
+
+
+
+def test_stream_provider_exception_skips_parsing_status(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.main.build_provider", lambda config: FailingProvider())
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/api/v1/analyze/stream",
+        json={
+            "source": "dashboard",
+            "mode": "analyze",
+            "request_text": "GET / HTTP/1.1\r\nHost: example.test\r\n\r\n",
+            "metadata": {"content_encoding": "utf-8"},
+        },
+    ) as response:
+        assert response.status_code == 200
+        body = response.read().decode("utf-8")
+
+    events = _decode_sse(body)
+    statuses = [data["status"] for event, data in events if event == "status"]
+
+    assert statuses == ["redacting", "calling_provider", "failed"]
+
+
+def test_stream_target_url_secrets_are_redacted(tmp_path, monkeypatch):
+    provider = CapturingProvider()
+    monkeypatch.setattr("app.main.build_provider", lambda config: provider)
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+
+    with client.stream(
+        "POST",
+        "/api/v1/analyze/stream",
+        json={
+            "source": "dashboard",
+            "mode": "analyze",
+            "target_url": "https://example.test/auth?code=secret-code&token=secret-token&page=1",
+            "request_text": "GET /auth HTTP/1.1\r\nHost: example.test\r\n\r\n",
+            "metadata": {"content_encoding": "utf-8"},
+        },
+    ) as response:
+        assert response.status_code == 200
+        body = response.read().decode("utf-8")
+
+    events = _decode_sse(body)
+    result = [data["analysis"] for event, data in events if event == "result"][0]
+    assert result["llm_status"] == "ok"
+
+    prompt = provider.calls[-1][1]
+    assert "secret-code" not in prompt
+    assert "secret-token" not in prompt
+    assert "code=[REDACTED]" in prompt
+    assert "token=[REDACTED]" in prompt
+    assert "page=1" in prompt
+
+    history = client.get("/api/v1/history").json()
+    assert "secret-code" not in str(history)
+    assert "secret-token" not in str(history)
+    assert history[0]["target_url"] == "https://example.test/auth?code=[REDACTED]&token=[REDACTED]&page=1"
+
+
+def test_provider_outage_with_sensitive_url_does_not_leak_to_history(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr("app.main.build_provider", lambda config: FailingProvider())
+    app = create_app(data_dir=tmp_path)
+    client = TestClient(app)
+
+    with caplog.at_level("WARNING"):
+        response = client.post(
+            "/api/v1/analyze",
+            json={
+                "source": "dashboard",
+                "mode": "analyze",
+                "target_url": "https://example.test/login?token=super-secret-token&session=abc123",
+                "request_text": "GET /login HTTP/1.1\r\nHost: example.test\r\n\r\n",
+                "metadata": {"content_encoding": "utf-8"},
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["llm_status"] == "failed"
+    assert "super-secret-token" not in caplog.text
+
+    history_response = client.get("/api/v1/history").json()
+    assert "super-secret-token" not in str(history_response)
+    assert "abc123" not in str(history_response)
+    assert history_response[0]["target_url"] == "https://example.test/login?token=[REDACTED]&session=[REDACTED]"
+    assert history_response[0]["llm_status"] == "failed"
+
+
+def _decode_sse(body: str) -> list[tuple[str, dict]]:
+    events = []
+    for block in body.strip().split("\n\n"):
+        event_name = ""
+        data_lines = []
+        for line in block.splitlines():
+            if line.startswith("event: "):
+                event_name = line.removeprefix("event: ")
+            if line.startswith("data: "):
+                data_lines.append(line.removeprefix("data: "))
+        if event_name and data_lines:
+            events.append((event_name, json.loads("\n".join(data_lines))))
+    return events

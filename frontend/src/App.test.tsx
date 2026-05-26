@@ -21,12 +21,23 @@ const analysisResponse = {
   llm_status: 'ok',
 };
 
+const failedAnalysisResponse = {
+  analysis_id: 'analysis-failed',
+  summary: 'The LLM response could not be parsed into the required schema.',
+  findings: [],
+  redaction_applied: true,
+  llm_status: 'failed',
+};
+
 describe('dashboard', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith('/api/v1/analyze/stream') && init?.method === 'POST') {
+          return sseResponse(analysisResponse);
+        }
         if (url.endsWith('/api/v1/analyze') && init?.method === 'POST') {
           return jsonResponse(analysisResponse);
         }
@@ -68,6 +79,8 @@ describe('dashboard', () => {
     await user.click(screen.getByRole('button', { name: /analyze/i }));
 
     expect(await screen.findByText('Checked request')).toBeInTheDocument();
+    expect(screen.getByText('Calling provider')).toBeInTheDocument();
+    expect(screen.getByText('Persisted')).toBeInTheDocument();
     expect(screen.getByText('Missing security header')).toBeInTheDocument();
     expect(screen.getByText('low')).toBeInTheDocument();
   });
@@ -91,6 +104,9 @@ describe('dashboard', () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.endsWith('/api/v1/analyze/stream') && init?.method === 'POST') {
+        return sseResponse(analysisResponse);
+      }
       if (url.endsWith('/api/v1/analyze') && init?.method === 'POST') {
         return jsonResponse(analysisResponse);
       }
@@ -140,6 +156,65 @@ describe('dashboard', () => {
     await waitFor(() => expect(screen.getByText('sk-...9999')).toBeInTheDocument());
     expect(screen.queryByText('sk-test-key-9999')).not.toBeInTheDocument();
   });
+
+  test('stream failure alert does not include raw request secrets', async () => {
+    const user = userEvent.setup();
+    const secret = 'raw-stream-secret-5555';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/v1/analyze/stream') && init?.method === 'POST') {
+          return sseResponse(failedAnalysisResponse, 'failed');
+        }
+        if (url.endsWith('/api/v1/history')) {
+          return jsonResponse([]);
+        }
+        throw new Error(`Unhandled request: ${url}`);
+      }),
+    );
+    render(<App />);
+
+    await user.type(
+      screen.getByLabelText(/request/i),
+      `POST /login HTTP/1.1\r\nHost: example.test\r\nAuthorization: Bearer ${secret}\r\n\r\npassword=${secret}`,
+    );
+    await user.click(screen.getByRole('button', { name: /analyze/i }));
+
+    const failureAlert = await screen.findByRole('alert');
+    expect(failureAlert).toHaveTextContent(/analysis failed/i);
+    expect(failureAlert).not.toHaveTextContent(secret);
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+  });
+
+  test('interrupted stream marks progress failed instead of waiting for a final result', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/v1/analyze/stream') && init?.method === 'POST') {
+          return incompleteSseResponse();
+        }
+        if (url.endsWith('/api/v1/history')) {
+          return jsonResponse([]);
+        }
+        throw new Error(`Unhandled request: ${url}`);
+      }),
+    );
+    render(<App />);
+
+    await user.type(screen.getByLabelText(/request/i), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
+    await user.click(screen.getByRole('button', { name: /analyze/i }));
+
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts[0]).toHaveTextContent('Streaming analysis ended without a result');
+    expect(screen.getByText('Streaming failed')).toBeInTheDocument();
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+    expect(screen.queryByText('Waiting for final result')).not.toBeInTheDocument();
+  });
+
+
 });
 
 function jsonResponse(data: unknown): Response {
@@ -148,3 +223,45 @@ function jsonResponse(data: unknown): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+function sseResponse(analysis: unknown, finalStatus = 'persisted'): Response {
+  const body = [
+    'event: status',
+    'data: {"status":"redacting"}',
+    '',
+    'event: status',
+    'data: {"status":"calling_provider"}',
+    '',
+    'event: status',
+    'data: {"status":"parsing"}',
+    '',
+    'event: status',
+    `data: ${JSON.stringify({ status: finalStatus })}`,
+    '',
+    'event: result',
+    `data: ${JSON.stringify({ analysis })}`,
+    '',
+    '',
+  ].join('\n');
+  return new Response(body, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' },
+  });
+}
+
+function incompleteSseResponse(): Response {
+  const body = [
+    'event: status',
+    'data: {"status":"redacting"}',
+    '',
+    'event: status',
+    'data: {"status":"calling_provider"}',
+    '',
+    '',
+  ].join('\n');
+  return new Response(body, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' },
+  });
+}
+
