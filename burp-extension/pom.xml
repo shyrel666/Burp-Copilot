@@ -11,7 +11,7 @@
     <properties>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <montoya.version>2026.2</montoya.version>
+        <montoya.version>2023.12.1</montoya.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
