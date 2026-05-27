@@ -65,10 +65,14 @@ public final class AnalysisResultFormatter {
         }
 
         String findings = extractFindingsSection(rawJson);
-        if (findings != null) {
+        if (findings != null && !findings.trim().isEmpty()) {
             int count = countFindings(findings);
-            sb.append("\n--- Findings (").append(count).append(") ---\n\n");
-            formatFindings(findings, sb);
+            if (count > 0) {
+                sb.append("\n--- Findings (").append(count).append(") ---\n\n");
+                formatFindings(findings, sb);
+            } else {
+                sb.append("\nNo findings reported.\n");
+            }
         } else {
             sb.append("\nNo findings reported.\n");
         }
