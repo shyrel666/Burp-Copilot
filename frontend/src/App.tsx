@@ -1,9 +1,9 @@
-import { AlertCircle, BookOpen, History, KeyRound, Play, ShieldCheck } from 'lucide-react';
-import { FormEvent, useEffect, useState } from 'react';
-import { analyzeTrafficStream, fetchHistory, fetchSettings, saveProviderSettings } from './api/client';
-import type { AnalysisHistoryItem, AnalysisResponse, Finding, Mode, ProviderName, ProviderSettings, StreamStatus } from './types';
+import { AlertCircle, BookOpen, History, KeyRound, Layers, Play, RefreshCw, ShieldCheck, X } from 'lucide-react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { analyzeTrafficStream, cancelTask, fetchHistory, fetchSettings, fetchTasks, saveProviderSettings, submitBatch } from './api/client';
+import type { AnalysisHistoryItem, AnalysisResponse, Finding, HistoryFilters, Mode, ProviderName, ProviderSettings, StreamStatus, TaskInfo } from './types';
 
-type View = 'analyze' | 'history' | 'settings';
+type View = 'analyze' | 'batch' | 'history' | 'settings';
 
 const emptySettings: ProviderSettings = {
   provider: 'openai',
@@ -37,6 +37,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [tasks, setTasks] = useState<TaskInfo[]>([]);
+  const [historyFilters, setHistoryFilters] = useState<HistoryFilters>({});
+
   useEffect(() => {
     void loadHistory();
   }, []);
@@ -47,13 +50,27 @@ export default function App() {
     }
   }, [view]);
 
-  async function loadHistory() {
+  const loadHistory = useCallback(async (filters?: HistoryFilters) => {
     try {
-      setHistory(await fetchHistory());
+      setHistory(await fetchHistory(filters));
     } catch {
       setHistory([]);
     }
+  }, []);
+
+  async function loadTasks() {
+    try {
+      setTasks(await fetchTasks());
+    } catch {
+      setTasks([]);
+    }
   }
+
+  useEffect(() => {
+    if (view !== 'batch') return;
+    const interval = setInterval(() => void loadTasks(), 3000);
+    return () => clearInterval(interval);
+  }, [view]);
 
   async function loadSettings() {
     try {
@@ -119,7 +136,15 @@ export default function App() {
             <span>HTTP Analyzer</span>
           </div>
         </div>
-        <button className={view === 'history' ? 'nav-active' : ''} onClick={() => setView('history')}>
+        <button aria-label="Manual analysis view" className={view === 'analyze' ? 'nav-active' : ''} onClick={() => setView('analyze')}>
+          <Play aria-hidden="true" />
+          Analyze
+        </button>
+        <button className={view === 'batch' ? 'nav-active' : ''} onClick={() => { setView('batch'); void loadTasks(); }}>
+          <Layers aria-hidden="true" />
+          Batch
+        </button>
+        <button className={view === 'history' ? 'nav-active' : ''} onClick={() => { setView('history'); void loadHistory(historyFilters); }}>
           <History aria-hidden="true" />
           History
         </button>
@@ -202,7 +227,17 @@ export default function App() {
           </section>
         ) : null}
 
-        {view === 'history' ? <HistoryPanel items={history} /> : null}
+        {view === 'batch' ? (
+          <BatchPanel tasks={tasks} onRefresh={loadTasks} setError={setError} />
+        ) : null}
+        {view === 'history' ? (
+          <HistoryPanel
+            items={history}
+            filters={historyFilters}
+            setFilters={setHistoryFilters}
+            onApplyFilters={(f) => loadHistory(f)}
+          />
+        ) : null}
         {view === 'settings' ? (
           <SettingsPanel
             settings={settings}
@@ -308,9 +343,141 @@ function FindingCard({ finding }: { finding: Finding }) {
   );
 }
 
-function HistoryPanel({ items }: { items: AnalysisHistoryItem[] }) {
+function BatchPanel({
+  tasks,
+  onRefresh,
+  setError,
+}: {
+  tasks: TaskInfo[];
+  onRefresh: () => void;
+  setError: (msg: string | null) => void;
+}) {
+  const [batchText, setBatchText] = useState('');
+  const [batchMode, setBatchMode] = useState<Mode>('analyze');
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const lines = batchText.split('\n---\n').filter((s) => s.trim());
+    if (lines.length === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitBatch(
+        lines.map((text) => ({ mode: batchMode, requestText: text.trim() })),
+      );
+      setBatchText('');
+      onRefresh();
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : 'Batch submit failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCancel(taskId: string) {
+    try {
+      await cancelTask(taskId);
+      onRefresh();
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : 'Cancel failed');
+    }
+  }
+
   return (
     <section className="list-panel">
+      <form className="analysis-form" onSubmit={handleSubmit}>
+        <div className="segmented" aria-label="Batch mode">
+          <button type="button" className={batchMode === 'analyze' ? 'selected' : ''} onClick={() => setBatchMode('analyze')}>
+            <ShieldCheck aria-hidden="true" /> Analyze
+          </button>
+          <button type="button" className={batchMode === 'learn' ? 'selected' : ''} onClick={() => setBatchMode('learn')}>
+            <BookOpen aria-hidden="true" /> Learn
+          </button>
+        </div>
+        <label>
+          Batch requests (separate multiple with ---)
+          <textarea
+            value={batchText}
+            onChange={(e) => setBatchText(e.target.value)}
+            placeholder={'GET /api/users HTTP/1.1\r\nHost: example.test\r\n\r\n\n---\nGET /api/orders HTTP/1.1\r\nHost: example.test\r\n\r\n'}
+            rows={8}
+          />
+        </label>
+        <button className="primary-action" disabled={submitting || !batchText.trim()}>
+          <Layers aria-hidden="true" />
+          {submitting ? 'Submitting...' : 'Submit batch'}
+        </button>
+      </form>
+
+      <h3 style={{ marginTop: '1.5rem' }}>Task queue</h3>
+      <button type="button" className="secondary-action" onClick={onRefresh} style={{ marginBottom: '0.75rem' }}>
+        Refresh
+      </button>
+      {tasks.length === 0 ? (
+        <p className="muted">No tasks in queue.</p>
+      ) : (
+        tasks.map((task) => (
+          <article className="history-row" key={task.task_id}>
+            <div>
+              <strong>{task.mode} — {task.target_url || task.task_id.slice(0, 8)}</strong>
+              <span className={`status-pill status-${task.status}`}>{task.status}</span>
+              {task.error_message ? <span className="muted"> {task.error_message}</span> : null}
+            </div>
+            {(task.status === 'queued' || task.status === 'running') ? (
+              <button type="button" title="Cancel" onClick={() => handleCancel(task.task_id)}>
+                <X aria-hidden="true" size={14} />
+              </button>
+            ) : null}
+          </article>
+        ))
+      )}
+    </section>
+  );
+}
+
+function HistoryPanel({
+  items,
+  filters,
+  setFilters,
+  onApplyFilters,
+}: {
+  items: AnalysisHistoryItem[];
+  filters: HistoryFilters;
+  setFilters: (f: HistoryFilters) => void;
+  onApplyFilters: (f: HistoryFilters) => void;
+}) {
+  return (
+    <section className="list-panel">
+      <div className="filter-bar">
+        <select
+          aria-label="Filter by mode"
+          value={filters.mode || ''}
+          onChange={(e) => setFilters({ ...filters, mode: (e.target.value || undefined) as Mode | undefined })}
+        >
+          <option value="">All modes</option>
+          <option value="analyze">Analyze</option>
+          <option value="learn">Learn</option>
+        </select>
+        <select
+          aria-label="Filter by severity"
+          value={filters.min_severity || ''}
+          onChange={(e) => setFilters({ ...filters, min_severity: (e.target.value || undefined) as HistoryFilters['min_severity'] })}
+        >
+          <option value="">Any severity</option>
+          <option value="critical">Critical+</option>
+          <option value="high">High+</option>
+          <option value="medium">Medium+</option>
+          <option value="low">Low+</option>
+        </select>
+        <input
+          placeholder="Target host"
+          value={filters.target_host || ''}
+          onChange={(e) => setFilters({ ...filters, target_host: e.target.value || undefined })}
+        />
+        <button type="button" onClick={() => onApplyFilters(filters)}>Filter</button>
+        <button type="button" onClick={() => { const empty = {}; setFilters(empty); onApplyFilters(empty); }}>Clear</button>
+      </div>
       {items.length === 0 ? (
         <p className="muted">No analysis history yet.</p>
       ) : (
@@ -406,6 +573,7 @@ function SettingsPanel({
 }
 
 function viewTitle(view: View) {
+  if (view === 'batch') return 'Batch analysis';
   if (view === 'history') return 'Analysis history';
   if (view === 'settings') return 'Provider settings';
   return 'Manual analysis';

@@ -119,19 +119,21 @@ Acceptance:
 
 ## Phase 6: Batch And Queue Work
 
-Status: design-gated; do not implement directly from this checklist.
+Status: design complete; implementing.
+
+Design document: `docs/phase6-batch-queue-design.md`
 
 Goal: Support longer-running or multiple-message analyses only after a separate design pass.
 
-Before implementation, create a design document that answers:
+Design decisions (see design doc for full rationale):
 
-- Whether the MVP needs Redis/Celery now, or whether a lighter local queue is enough for single-user workflows.
-- Where redaction happens before queueing, and how to prove queue payloads contain redacted traffic only.
-- Task state schema: `queued`, `running`, `done`, `failed`, `cancelled`.
-- Cancellation semantics for queued tasks, running provider calls, and persisted history rows.
-- SQLite migration and compatibility plan.
-- History filtering model for mode, severity, target host, and time.
-- Local setup and release implications.
+- In-process asyncio queue with SQLite-backed task state (no Redis/Celery).
+- Redaction happens before enqueue; queue payloads store only redacted text.
+- Task state schema: `queued → running → done/failed/cancelled`.
+- Cancellation: immediate for queued; flag-based for running (checked after provider call).
+- New `task_queue` table; existing `analysis_history` unchanged.
+- History filtering via query params: mode, min_severity, target_host, since, until, limit, offset.
+- Zero new external dependencies.
 
 Acceptance:
 
@@ -158,10 +160,11 @@ Acceptance:
 
 ## Suggested First Follow-Up Issue
 
-Title: Design batch and queue architecture for Phase 6
+Title: Phase 7 packaging and release preparation
 
-Status: next recommended work. Scope:
+Status: next recommended work after Phase 6 implementation. Scope:
 
-- Create a design document answering the Phase 6 questions (Redis/Celery vs lighter queue, redaction before queueing, task state schema, cancellation semantics, SQLite migration, history filtering).
-- Do not add Redis, Celery, or a task queue dependency before design review.
-- Keep the extension thin and avoid passive scanner hooks.
+- Add Docker Compose for backend + frontend.
+- Add GitHub release workflow.
+- Add OpenAPI export and secret scan.
+- Tag `v0.1.0-mvp`.

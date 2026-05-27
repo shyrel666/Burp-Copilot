@@ -1,4 +1,4 @@
-import type { AnalysisHistoryItem, AnalysisResponse, Mode, ProviderName, ProviderSettings, StreamStatus } from '../types';
+import type { AnalysisHistoryItem, AnalysisResponse, HistoryFilters, Mode, ProviderName, ProviderSettings, StreamStatus, TaskInfo } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const BACKEND_TOKEN = import.meta.env.VITE_BACKEND_TOKEN ?? '';
@@ -52,8 +52,17 @@ export async function analyzeTrafficStream(
   return readAnalysisStream(response, onStatus);
 }
 
-export function fetchHistory(): Promise<AnalysisHistoryItem[]> {
-  return request<AnalysisHistoryItem[]>('/api/v1/history');
+export function fetchHistory(filters?: HistoryFilters): Promise<AnalysisHistoryItem[]> {
+  const params = new URLSearchParams();
+  if (filters?.mode) params.set('mode', filters.mode);
+  if (filters?.min_severity) params.set('min_severity', filters.min_severity);
+  if (filters?.target_host) params.set('target_host', filters.target_host);
+  if (filters?.since) params.set('since', filters.since);
+  if (filters?.until) params.set('until', filters.until);
+  if (filters?.limit) params.set('limit', String(filters.limit));
+  if (filters?.offset) params.set('offset', String(filters.offset));
+  const qs = params.toString();
+  return request<AnalysisHistoryItem[]>(`/api/v1/history${qs ? `?${qs}` : ''}`);
 }
 
 export function fetchSettings(): Promise<ProviderSettings> {
@@ -74,6 +83,44 @@ export function saveProviderSettings(input: {
       api_key: input.apiKey || null,
       base_url: input.baseUrl || null,
     }),
+  });
+}
+
+export type BatchItem = {
+  mode: Mode;
+  requestText: string;
+  responseText?: string;
+  targetUrl?: string;
+};
+
+export function submitBatch(items: BatchItem[]): Promise<{ tasks: TaskInfo[] }> {
+  return request<{ tasks: TaskInfo[] }>('/api/v1/batch/submit', {
+    method: 'POST',
+    body: JSON.stringify({
+      items: items.map((item) => ({
+        source: 'dashboard',
+        mode: item.mode,
+        request_text: item.requestText,
+        response_text: item.responseText || null,
+        target_url: item.targetUrl || null,
+        metadata: { content_encoding: 'utf-8' },
+      })),
+    }),
+  });
+}
+
+export function fetchTasks(status?: string): Promise<TaskInfo[]> {
+  const qs = status ? `?status=${status}` : '';
+  return request<TaskInfo[]>(`/api/v1/batch/tasks${qs}`);
+}
+
+export function fetchTask(taskId: string): Promise<TaskInfo> {
+  return request<TaskInfo>(`/api/v1/batch/tasks/${taskId}`);
+}
+
+export function cancelTask(taskId: string): Promise<{ task_id: string; status: string }> {
+  return request<{ task_id: string; status: string }>(`/api/v1/batch/tasks/${taskId}/cancel`, {
+    method: 'POST',
   });
 }
 

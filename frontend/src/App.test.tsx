@@ -41,7 +41,7 @@ describe('dashboard', () => {
         if (url.endsWith('/api/v1/analyze') && init?.method === 'POST') {
           return jsonResponse(analysisResponse);
         }
-        if (url.endsWith('/api/v1/history')) {
+        if (url.includes('/api/v1/history')) {
           return jsonResponse([]);
         }
         if (url.endsWith('/api/v1/settings')) {
@@ -61,6 +61,19 @@ describe('dashboard', () => {
             masked_api_key: 'sk-...9999',
             base_url: null,
           });
+        }
+        if (url.endsWith('/api/v1/batch/submit') && init?.method === 'POST') {
+          return jsonResponse({
+            tasks: [
+              { task_id: 'task-1', status: 'queued', created_at: '2026-05-27T12:00:00', updated_at: '2026-05-27T12:00:00', source: 'dashboard', mode: 'analyze', target_url: null, analysis_id: null, error_message: null },
+            ],
+          });
+        }
+        if (url.endsWith('/api/v1/batch/tasks')) {
+          return jsonResponse([]);
+        }
+        if (url.includes('/api/v1/batch/tasks/') && init?.method === 'POST') {
+          return jsonResponse({ task_id: 'task-1', status: 'cancelled' });
         }
         throw new Error(`Unhandled request: ${url}`);
       }),
@@ -199,6 +212,29 @@ describe('dashboard', () => {
     expect(screen.getByLabelText(/base url/i)).toHaveValue('http://localhost:11434');
     expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
     expect(screen.getByText(/ollama runs locally and does not require an api key/i)).toBeInTheDocument();
+  });
+
+  test('batch panel submits items and shows task queue', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: /^batch$/i }));
+    await user.type(screen.getByLabelText(/batch requests/i), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
+    await user.click(screen.getByRole('button', { name: /submit batch/i }));
+
+    expect(await screen.findByText('No tasks in queue.')).toBeInTheDocument();
+  });
+
+  test('history panel shows filter controls', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: /history/i }));
+
+    expect(screen.getByLabelText(/filter by mode/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/filter by severity/i)).toBeInTheDocument();
+    expect(screen.getByText(/filter/i)).toBeInTheDocument();
+    expect(screen.getByText(/clear/i)).toBeInTheDocument();
   });
 
   test('interrupted stream marks progress failed instead of waiting for a final result', async () => {

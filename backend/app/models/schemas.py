@@ -111,3 +111,39 @@ class GuardedPayload(BaseModel):
     response_text: str | None
     metadata: AnalysisMetadata
 
+
+class TaskStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class BatchItem(BaseModel):
+    source: Source = Source.DASHBOARD
+    mode: AnalysisMode
+    request_text: str = Field(min_length=1)
+    response_text: str | None = None
+    target_url: str | None = None
+    metadata: AnalysisMetadata = Field(default_factory=AnalysisMetadata)
+
+
+class BatchSubmitRequest(BaseModel):
+    items: list[BatchItem] = Field(min_length=1, max_length=20)
+
+
+class TaskInfo(BaseModel):
+    task_id: str
+    status: TaskStatus
+    created_at: str
+    updated_at: str
+    source: Source
+    mode: AnalysisMode
+    target_url: str | None = None
+    analysis_id: str | None = None
+    error_message: str | None = None
+
+
+class BatchSubmitResponse(BaseModel):
+    tasks: list[TaskInfo]

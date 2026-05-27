@@ -37,3 +37,27 @@ export interface ProviderSettings {
   masked_api_key: string | null;
   base_url: string | null;
 }
+
+export type TaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+
+export interface TaskInfo {
+  task_id: string;
+  status: TaskStatus;
+  created_at: string;
+  updated_at: string;
+  source: 'burp' | 'dashboard';
+  mode: Mode;
+  target_url: string | null;
+  analysis_id: string | null;
+  error_message: string | null;
+}
+
+export interface HistoryFilters {
+  mode?: Mode;
+  min_severity?: Severity;
+  target_host?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}

@@ -12,6 +12,7 @@ from app.models.schemas import (
     AnalysisMode,
     AnalysisResponse,
     Finding,
+    Severity,
     Source,
 )
 
@@ -63,13 +64,51 @@ class HistoryStore:
     def create_analysis_id(self) -> str:
         return str(uuid.uuid4())
 
-    def list(self) -> list[AnalysisHistoryItem]:
+    def list(
+        self,
+        *,
+        mode: str | None = None,
+        min_severity: str | None = None,
+        target_host: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AnalysisHistoryItem]:
+        query = "SELECT * FROM analysis_history WHERE 1=1"
+        params: list = []
+        if mode:
+            query += " AND mode = ?"
+            params.append(mode)
+        if target_host:
+            query += " AND target_url LIKE ?"
+            params.append(f"%{target_host}%")
+        if since:
+            query += " AND created_at >= ?"
+            params.append(since)
+        if until:
+            query += " AND created_at <= ?"
+            params.append(until)
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute(
-                "SELECT * FROM analysis_history ORDER BY created_at DESC LIMIT 100"
-            ).fetchall()
-        return [self._row_to_item(row) for row in rows]
+            rows = conn.execute(query, params).fetchall()
+        items = [self._row_to_item(row) for row in rows]
+        if min_severity:
+            items = self._filter_by_severity(items, min_severity)
+        return items
+
+    def _filter_by_severity(self, items: list[AnalysisHistoryItem], min_severity: str) -> list[AnalysisHistoryItem]:
+        severity_order = [s.value for s in Severity]
+        min_index = severity_order.index(min_severity) if min_severity in severity_order else len(severity_order)
+        return [
+            item for item in items
+            if any(
+                severity_order.index(f.severity.value) <= min_index
+                for f in item.findings
+            )
+        ]
 
     def get(self, analysis_id: str) -> AnalysisHistoryItem | None:
         with sqlite3.connect(self.db_path) as conn:

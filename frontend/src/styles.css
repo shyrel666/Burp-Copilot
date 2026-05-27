@@ -380,3 +380,48 @@ dd {
   margin-bottom: 14px;
 }
 
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  align-items: center;
+}
+
+.filter-bar select,
+.filter-bar input {
+  width: auto;
+  min-width: 140px;
+  padding: 6px 10px;
+}
+
+.filter-bar button {
+  border: 1px solid #c7d2d9;
+  background: #ffffff;
+  color: #32434d;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filter-bar button:hover {
+  background: #eef2f4;
+}
+
+.secondary-action {
+  border: 1px solid #c7d2d9;
+  background: #ffffff;
+  color: #32434d;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.status-queued { background: #eef2f4; color: #52636e; }
+.status-running { background: #fff4d6; color: #8a6d00; }
+.status-done { background: #d6f5e3; color: #1f6f43; }
+.status-failed { background: #fbdcdc; color: #a02929; }
+.status-cancelled { background: #f0e8f5; color: #6b3fa0; }
+.status-cancelled { background: #e7e7e7; color: #52636e; }

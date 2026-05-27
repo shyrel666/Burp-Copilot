@@ -2,33 +2,39 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from app.core.input_guard import guard_payload
+from app.core.redaction import redact_pair, redact_url
 from app.llm.fake_provider import FakeLLMProvider
 from app.llm.openai_provider import OpenAIProvider
 from app.llm.provider_registry import ProviderConfig, build_provider
-from app.models.schemas import AnalyzeRequest, ProviderSettingsResponse, ProviderSettingsUpdate
+from app.models.schemas import (
+    AnalyzeRequest,
+    BatchSubmitRequest,
+    BatchSubmitResponse,
+    ProviderSettingsResponse,
+    ProviderSettingsUpdate,
+    TaskInfo,
+    TaskStatus,
+)
 from app.services.analysis_service import AnalysisService
 from app.services.history_store import HistoryStore
 from app.services.settings_store import SettingsStore
+from app.services.task_store import TaskStore
+from app.services.task_worker import TaskWorker
 
 
 def create_app(data_dir: str | Path | None = None, provider_mode: str | None = None) -> FastAPI:
-    app = FastAPI(title="Burp AI HTTP Traffic Analyzer", version="0.1.0")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
-        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
-        allow_headers=["Content-Type", "X-Backend-Token"],
-    )
     resolved_data_dir = Path(data_dir or os.getenv("DATA_DIR", "./data"))
     settings = SettingsStore(resolved_data_dir)
     history = HistoryStore(resolved_data_dir)
-    require_token = Depends(_require_backend_token)
+    task_store = TaskStore(resolved_data_dir)
 
     _provider_cache: dict = {}
 
@@ -40,6 +46,29 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
             _provider_cache["config"] = config
             _provider_cache["instance"] = _build_provider(settings, provider_mode)
         return _provider_cache["instance"]
+
+    concurrency = int(os.getenv("BATCH_CONCURRENCY", "2"))
+    worker = TaskWorker(
+        task_store=task_store,
+        history_store=history,
+        provider_factory=_resolve_provider,
+        concurrency=concurrency,
+    )
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        await worker.start()
+        yield
+        await worker.stop()
+
+    app = FastAPI(title="Burp AI HTTP Traffic Analyzer", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+        allow_headers=["Content-Type", "X-Backend-Token"],
+    )
+    require_token = Depends(_require_backend_token)
 
     @app.get("/api/v1/health")
     async def health() -> dict[str, str]:
@@ -67,9 +96,29 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
             headers={"Cache-Control": "no-cache"},
         )
 
+    _valid_severities = {"critical", "high", "medium", "low", "info"}
+
     @app.get("/api/v1/history", dependencies=[require_token])
-    async def list_history():
-        return history.list()
+    async def list_history(
+        mode: str | None = Query(default=None),
+        min_severity: str | None = Query(default=None),
+        target_host: str | None = Query(default=None),
+        since: str | None = Query(default=None),
+        until: str | None = Query(default=None),
+        limit: int = Query(default=100, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ):
+        if min_severity and min_severity not in _valid_severities:
+            raise HTTPException(status_code=422, detail=f"invalid min_severity: must be one of {sorted(_valid_severities)}")
+        return history.list(
+            mode=mode,
+            min_severity=min_severity,
+            target_host=target_host,
+            since=since,
+            until=until,
+            limit=limit,
+            offset=offset,
+        )
 
     @app.get("/api/v1/analysis/{analysis_id}", dependencies=[require_token])
     async def get_analysis(analysis_id: str):
@@ -95,6 +144,57 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         result = await provider.health_check()
         return {"ok": result.ok, "reason": result.reason}
+
+    # --- Batch endpoints ---
+
+    batch_max_items = int(os.getenv("BATCH_MAX_ITEMS", "20"))
+
+    @app.post("/api/v1/batch/submit", response_model=BatchSubmitResponse, dependencies=[require_token])
+    async def batch_submit(request: BatchSubmitRequest):
+        if len(request.items) > batch_max_items:
+            raise HTTPException(status_code=422, detail=f"batch exceeds limit of {batch_max_items} items")
+
+        tasks = []
+        for item in request.items:
+            guarded = guard_payload(
+                item.request_text, item.response_text, item.target_url, item.metadata
+            )
+            redacted_request, redacted_response = redact_pair(guarded.request_text, guarded.response_text)
+            redacted_target = redact_url(item.target_url)
+            task_info = task_store.enqueue(
+                source=item.source,
+                mode=item.mode,
+                target_url=redacted_target,
+                redacted_request=redacted_request,
+                redacted_response=redacted_response,
+                metadata_json=guarded.metadata.model_dump_json(),
+            )
+            tasks.append(task_info)
+        return BatchSubmitResponse(tasks=tasks)
+
+    @app.get("/api/v1/batch/tasks", response_model=list[TaskInfo], dependencies=[require_token])
+    async def list_tasks(status: str | None = Query(default=None)):
+        task_status = TaskStatus(status) if status else None
+        return task_store.list_tasks(status=task_status)
+
+    @app.get("/api/v1/batch/tasks/{task_id}", response_model=TaskInfo, dependencies=[require_token])
+    async def get_task(task_id: str):
+        task = task_store.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        return task
+
+    @app.post("/api/v1/batch/tasks/{task_id}/cancel", dependencies=[require_token])
+    async def cancel_task(task_id: str):
+        task = task_store.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        if task.status in (TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED):
+            raise HTTPException(status_code=409, detail=f"cannot cancel task in {task.status.value} state")
+        success = task_store.cancel(task_id)
+        if not success:
+            raise HTTPException(status_code=409, detail="task could not be cancelled")
+        return {"task_id": task_id, "status": "cancelled"}
 
     return app
 
