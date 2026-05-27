@@ -9,6 +9,11 @@ This repository is a local-first Burp AI HTTP Traffic Analyzer. Follow these ins
 - Add or update tests for behavior changes.
 - Do not add passive scanner integration without a separate design/review pass.
 
+## Git workflow
+
+- Push commits directly to `main`. Do not create feature branches or pull requests unless explicitly asked.
+- Run local verification commands before pushing.
+
 ## Burp extension JAR workflow
 
 The Burp extension JAR is built by GitHub Actions, not manually stored in the repository.

@@ -25,6 +25,7 @@ Burp Montoya extension
 - `burp-extension/` - Java Montoya extension with async backend calls.
 - `frontend/` - React + Vite dashboard for manual analysis and history.
 - `.github/workflows/ci.yml` - backend, frontend, and Java build checks.
+- `.github/workflows/release.yml` - release build, secret scan, OpenAPI export, and release artifacts.
 
 ## Privacy Boundaries
 
@@ -32,9 +33,22 @@ Burp Montoya extension
 - The database stores redacted request and response text only.
 - Logs must not include raw request bodies, cookies, authorization headers, or API keys.
 - Provider API keys are write-only through the API. Settings responses only expose masked key state.
-- Do not commit real target traffic, real credentials, `.env` files, or Burp project files.
+- Do not commit real target traffic, real credentials, `.env` files, SQLite databases, local logs, captures, generated JARs, or Burp project files.
 
 ## Local Setup
+
+### Docker Compose
+
+Docker Compose runs the backend and frontend only. Postgres, Redis, Celery, and Ollama are not started by this stack.
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Open the dashboard at `http://localhost:3000`. The backend listens on `http://localhost:8000`.
+
+If you use Ollama, run Ollama separately and set `LLM_PROVIDER=ollama` plus `OLLAMA_BASE_URL` in `.env`.
 
 ### Backend
 
@@ -56,14 +70,16 @@ npm run dev
 
 ### Burp Extension
 
-Build the extension JAR with Maven or through GitHub Actions:
+Build the extension JAR with Maven if available:
 
 ```bash
 cd burp-extension
 mvn test package
 ```
 
-Load the generated JAR in Burp Suite Professional or Community under Extensions.
+The release and CI workflows also build the extension JAR. Download the `burp-ai-extension-jar` or release JAR artifact from GitHub Actions/Releases, then load it in Burp Suite Professional or Community under Extensions.
+
+Generated JAR files are not committed to this repository.
 
 ## Configuration
 
@@ -75,7 +91,67 @@ If `BACKEND_TOKEN` is set for the backend, clients must send the same value in
 the `X-Backend-Token` header:
 
 - Dashboard: set `VITE_BACKEND_TOKEN` before running `npm run dev` or building.
+  This token is compiled into the JS bundle and visible to anyone who can load the
+  page. It prevents casual access but is not a real security credential.
 - Burp extension: enter the token in the `Backend Token` field.
+
+LLM provider configuration:
+
+- OpenAI-compatible cloud provider: set `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL`, and optionally `OPENAI_BASE_URL`.
+- Local Ollama: run Ollama separately, set `LLM_PROVIDER=ollama`, `OLLAMA_MODEL`, and `OLLAMA_BASE_URL`.
+
+## API Docs
+
+The OpenAPI export is committed at `docs/openapi.json`.
+
+Regenerate it after API changes:
+
+```bash
+cd backend
+python scripts/export_openapi.py
+```
+
+## Verification
+
+Run the local checks before opening a pull request or tagging a release:
+
+```bash
+cd backend
+pytest
+```
+
+```bash
+cd frontend
+npm test -- --run
+npm run build
+```
+
+If Maven is installed:
+
+```bash
+cd burp-extension
+mvn test package
+```
+
+## Release
+
+The first public MVP release tag is `v0.1.0-mvp`.
+
+Before tagging:
+
+- Backend, frontend, and Burp extension CI jobs must pass.
+- Secret scan must pass.
+- Release artifacts must not include `.env`, SQLite databases, captures, local logs, or Burp project files.
+- The generated Burp extension JAR must be loaded manually in Burp and verified with `AI Analyze` and `AI Learn Mode`.
+
+Tag only after those checks pass:
+
+```bash
+git tag v0.1.0-mvp
+git push origin v0.1.0-mvp
+```
+
+The release workflow creates a draft GitHub release with the Burp extension JAR, frontend build archive, and OpenAPI export.
 
 ## Authorized Use Only
 

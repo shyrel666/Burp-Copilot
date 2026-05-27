@@ -144,6 +144,8 @@ Acceptance:
 
 ## Phase 7: Packaging And Release
 
+Status: release preparation implemented; pending CI, secret scan, manual Burp loading, and tag.
+
 Goal: Prepare a public GitHub release.
 
 - Add Docker Compose for backend + frontend only; keep Postgres/Ollama optional.
