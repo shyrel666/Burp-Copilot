@@ -518,6 +518,8 @@ function HistoryPanel({
   onApplyFilters: (f: HistoryFilters) => void;
 }) {
   const { t } = useLocale();
+  const [selectedItem, setSelectedItem] = useState<AnalysisHistoryItem | null>(null);
+
   return (
     <section className="list-panel">
       <div className="filter-bar">
@@ -553,7 +555,11 @@ function HistoryPanel({
         <p className="muted">{t('no_history')}</p>
       ) : (
         items.map((item) => (
-          <article className="history-row" key={item.analysis_id}>
+          <article
+            className="history-row history-row-clickable"
+            key={item.analysis_id}
+            onClick={() => setSelectedItem(item)}
+          >
             <div>
               <strong>{item.summary}</strong>
               <span>{item.target_url || item.mode}</span>
@@ -562,7 +568,41 @@ function HistoryPanel({
           </article>
         ))
       )}
+      {selectedItem ? (
+        <HistoryDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      ) : null}
     </section>
+  );
+}
+
+function HistoryDetailModal({ item, onClose }: { item: AnalysisHistoryItem; onClose: () => void }) {
+  const { t } = useLocale();
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>{item.summary}</h2>
+            <span className="muted">{item.target_url || item.mode} · {item.created_at}</span>
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modal-body">
+          {item.findings.length === 0 ? (
+            <p className="muted">{t('no_history')}</p>
+          ) : (
+            <div className="findings-list">
+              {item.findings.map((finding) => (
+                <FindingCard key={`${finding.title}-${finding.evidence}`} finding={finding} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
