@@ -61,7 +61,7 @@ public class BackendClient {
                 while ((line = reader.readLine()) != null) {
                     if (Thread.interrupted()) {
                         callback.onError(new InterruptedException("Stream reading interrupted"));
-                        throw new InterruptedException("Stream reading interrupted");
+                        return;
                     }
                     if (line.isEmpty()) {
                         if (eventName != null && !eventName.isEmpty() && dataBuilder.length() > 0) {
