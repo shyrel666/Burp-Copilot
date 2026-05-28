@@ -16,6 +16,10 @@ class KeyAwareFakeProvider:
             raise RuntimeError("missing api key")
         return VALID_RESPONSE
 
+    async def analyze_stream(self, system_prompt, user_prompt):
+        result = await self.analyze(system_prompt, user_prompt)
+        yield result
+
     async def repair_json(self, invalid_text, error):
         if not self.api_key:
             raise RuntimeError("missing api key")
@@ -193,6 +197,10 @@ class FailingProvider:
     async def analyze(self, system_prompt, user_prompt):
         raise RuntimeError("simulated upstream outage")
 
+    async def analyze_stream(self, system_prompt, user_prompt):
+        raise RuntimeError("simulated upstream outage")
+        yield  # make this an async generator  # noqa: unreachable
+
     async def repair_json(self, invalid_text, error):
         raise RuntimeError("simulated upstream outage")
 
@@ -257,6 +265,9 @@ class BrokenJsonProvider:
     async def analyze(self, system_prompt, user_prompt):
         return "not json"
 
+    async def analyze_stream(self, system_prompt, user_prompt):
+        yield "not json"
+
     async def repair_json(self, invalid_text, error):
         return "still not json"
 
@@ -271,6 +282,10 @@ class CapturingProvider:
     async def analyze(self, system_prompt, user_prompt):
         self.calls.append((system_prompt, user_prompt))
         return VALID_RESPONSE
+
+    async def analyze_stream(self, system_prompt, user_prompt):
+        result = await self.analyze(system_prompt, user_prompt)
+        yield result
 
     async def repair_json(self, invalid_text, error):
         return VALID_RESPONSE
@@ -375,6 +390,9 @@ class SchemaViolatingRepairProvider:
     async def analyze(self, system_prompt, user_prompt):
         return "not json"
 
+    async def analyze_stream(self, system_prompt, user_prompt):
+        yield "not json"
+
     async def repair_json(self, invalid_text, error):
         return '{"summary":"repaired but bad","findings":[{"title":"missing fields"}]}'
 
@@ -429,10 +447,13 @@ def test_stream_analyze_emits_progress_result_and_no_raw_secrets(tmp_path):
 
     events = _decode_sse(body)
     statuses = [data["status"] for event, data in events if event == "status"]
+    content_chunks = [data["text"] for event, data in events if event == "content"]
     result = [data["analysis"] for event, data in events if event == "result"][0]
 
     assert statuses == ["redacting", "calling_provider", "parsing", "persisted"]
     assert result["llm_status"] == "ok"
+    assert len(content_chunks) > 0
+    assert "".join(content_chunks) == VALID_RESPONSE
     assert secret not in body
     assert client.get("/api/v1/history").json()[0]["llm_status"] == "ok"
 
@@ -552,6 +573,34 @@ def test_provider_outage_with_sensitive_url_does_not_leak_to_history(tmp_path, m
     assert "abc123" not in str(history_response)
     assert history_response[0]["target_url"] == "https://example.test/login?token=[REDACTED]&session=[REDACTED]"
     assert history_response[0]["llm_status"] == "failed"
+
+
+def test_fake_provider_analyze_stream_yields_chunks():
+    import asyncio
+    from app.llm.fake_provider import FakeLLMProvider, VALID_RESPONSE
+
+    provider = FakeLLMProvider()
+    chunks = asyncio.run(_collect_stream(provider))
+
+    assert len(chunks) > 0
+    assert "".join(chunks) == VALID_RESPONSE
+
+
+def test_fake_provider_analyze_stream_invalid_once():
+    import asyncio
+    from app.llm.fake_provider import FakeLLMProvider
+
+    provider = FakeLLMProvider(invalid_once=True)
+    chunks = asyncio.run(_collect_stream(provider))
+
+    assert chunks == ["This is not JSON"]
+
+
+async def _collect_stream(provider):
+    chunks = []
+    async for chunk in provider.analyze_stream("system", "user"):
+        chunks.append(chunk)
+    return chunks
 
 
 def _decode_sse(body: str) -> list[tuple[str, dict]]:

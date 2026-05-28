@@ -1,6 +1,7 @@
-import { AlertCircle, BookOpen, History, KeyRound, Layers, Play, RefreshCw, ShieldCheck, X } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { AlertCircle, BookOpen, Globe, History, KeyRound, Layers, Play, ShieldCheck, X } from 'lucide-react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { analyzeTrafficStream, cancelTask, fetchHistory, fetchSettings, fetchTasks, saveProviderSettings, submitBatch } from './api/client';
+import { LocaleContext, getMessages, useLocale, type Locale, type LocaleKeys } from './i18n';
 import type { AnalysisHistoryItem, AnalysisResponse, Finding, HistoryFilters, Mode, ProviderName, ProviderSettings, StreamStatus, TaskInfo } from './types';
 
 type View = 'analyze' | 'batch' | 'history' | 'settings';
@@ -23,7 +24,40 @@ function defaultBaseUrlForProvider(provider: ProviderName): string | null {
   return null;
 }
 
+const LOCALE_STORAGE_KEY = 'burp-ai-locale';
+
+function getInitialLocale(): Locale {
+  const stored = localStorage.getItem(LOCALE_STORAGE_KEY);
+  if (stored === 'en' || stored === 'zh') return stored;
+  return 'zh';
+}
+
 export default function App() {
+  const [locale, setLocaleState] = useState<Locale>(getInitialLocale);
+
+  const setLocale = useCallback((l: Locale) => {
+    setLocaleState(l);
+    localStorage.setItem(LOCALE_STORAGE_KEY, l);
+  }, []);
+
+  const t = useCallback((key: LocaleKeys) => getMessages(locale)[key], [locale]);
+
+  const localeCtx = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
+
+  return (
+    <LocaleContext.Provider value={localeCtx}>
+      <AppInner />
+    </LocaleContext.Provider>
+  );
+}
+
+function AppInner() {
+  const { t, locale, setLocale } = useLocale();
+
+  function localizedErrorMessage(err: unknown) {
+    return err instanceof Error ? err.message : t('error_unexpected');
+  }
+
   const [view, setView] = useState<View>('analyze');
   const [mode, setMode] = useState<Mode>('analyze');
   const [targetUrl, setTargetUrl] = useState('');
@@ -31,6 +65,7 @@ export default function App() {
   const [responseText, setResponseText] = useState('');
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [streamStatuses, setStreamStatuses] = useState<StreamStatus[]>([]);
+  const [streamingText, setStreamingText] = useState('');
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
   const [settings, setSettings] = useState<ProviderSettings>(emptySettings);
   const [apiKey, setApiKey] = useState('');
@@ -76,7 +111,7 @@ export default function App() {
     try {
       setSettings(await fetchSettings());
     } catch (exc) {
-      setError(errorMessage(exc));
+      setError(localizedErrorMessage(exc));
     }
   }
 
@@ -86,21 +121,19 @@ export default function App() {
     setError(null);
     setAnalysis(null);
     setStreamStatuses([]);
+    setStreamingText('');
     try {
       const result = await analyzeTrafficStream(
-        {
-          mode,
-          requestText,
-          responseText,
-          targetUrl,
-        },
+        { mode, requestText, responseText, targetUrl },
         (status) => setStreamStatuses((statuses) => [...statuses, status]),
+        (text) => setStreamingText((prev) => prev + text),
       );
       setAnalysis(result);
+      setStreamingText('');
       await loadHistory();
     } catch (exc) {
       setStreamStatuses((statuses) => [...statuses, 'failed']);
-      setError(errorMessage(exc));
+      setError(localizedErrorMessage(exc));
     } finally {
       setLoading(false);
     }
@@ -120,11 +153,18 @@ export default function App() {
       setSettings(result);
       setApiKey('');
     } catch (exc) {
-      setError(errorMessage(exc));
+      setError(localizedErrorMessage(exc));
     } finally {
       setLoading(false);
     }
   }
+
+  const viewTitleMap: Record<View, LocaleKeys> = {
+    analyze: 'view_analyze',
+    batch: 'view_batch',
+    history: 'view_history',
+    settings: 'view_settings',
+  };
 
   return (
     <div className="app-shell">
@@ -132,35 +172,45 @@ export default function App() {
         <div className="brand">
           <ShieldCheck aria-hidden="true" />
           <div>
-            <strong>Burp AI</strong>
-            <span>HTTP Analyzer</span>
+            <strong>{t('brand_name')}</strong>
+            <span>{t('brand_sub')}</span>
           </div>
         </div>
-        <button aria-label="Manual analysis view" className={view === 'analyze' ? 'nav-active' : ''} onClick={() => setView('analyze')}>
+        <button aria-label={t('nav_analyze')} className={view === 'analyze' ? 'nav-active' : ''} onClick={() => setView('analyze')}>
           <Play aria-hidden="true" />
-          Analyze
+          {t('nav_analyze')}
         </button>
         <button className={view === 'batch' ? 'nav-active' : ''} onClick={() => { setView('batch'); void loadTasks(); }}>
           <Layers aria-hidden="true" />
-          Batch
+          {t('nav_batch')}
         </button>
         <button className={view === 'history' ? 'nav-active' : ''} onClick={() => { setView('history'); void loadHistory(historyFilters); }}>
           <History aria-hidden="true" />
-          History
+          {t('nav_history')}
         </button>
         <button className={view === 'settings' ? 'nav-active' : ''} onClick={() => setView('settings')}>
           <KeyRound aria-hidden="true" />
-          Settings
+          {t('nav_settings')}
         </button>
+
+        <div style={{ marginTop: 'auto' }}>
+          <button
+            aria-label={t('lang_switch_label')}
+            onClick={() => setLocale(locale === 'zh' ? 'en' : 'zh')}
+          >
+            <Globe aria-hidden="true" />
+            {locale === 'zh' ? 'EN' : '中文'}
+          </button>
+        </div>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
-            <h1>{viewTitle(view)}</h1>
-            <p>Local-first analysis for authorized HTTP security review.</p>
+            <h1>{t(viewTitleMap[view])}</h1>
+            <p>{t('subtitle')}</p>
           </div>
-          <div className="status-pill">Redaction required</div>
+          <div className="status-pill">{t('status_redaction')}</div>
         </header>
 
         {error ? (
@@ -176,54 +226,54 @@ export default function App() {
               <div className="segmented" aria-label="Analysis mode">
                 <button
                   type="button"
-                  aria-label="Use security review mode"
+                  aria-label={t('mode_analyze')}
                   className={mode === 'analyze' ? 'selected' : ''}
                   onClick={() => setMode('analyze')}
                 >
                   <ShieldCheck aria-hidden="true" />
-                  Analyze
+                  {t('mode_analyze')}
                 </button>
                 <button
                   type="button"
-                  aria-label="Use learning mode"
+                  aria-label={t('mode_learn')}
                   className={mode === 'learn' ? 'selected' : ''}
                   onClick={() => setMode('learn')}
                 >
                   <BookOpen aria-hidden="true" />
-                  Learn
+                  {t('mode_learn')}
                 </button>
               </div>
 
               <label>
-                Target URL
-                <input value={targetUrl} onChange={(event) => setTargetUrl(event.target.value)} placeholder="https://example.test/path" />
+                {t('label_target_url')}
+                <input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder={t('placeholder_target_url')} />
               </label>
 
               <label>
-                Request
+                {t('label_request')}
                 <textarea
                   value={requestText}
-                  onChange={(event) => setRequestText(event.target.value)}
-                  placeholder={'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n'}
+                  onChange={(e) => setRequestText(e.target.value)}
+                  placeholder={t('placeholder_request')}
                   required
                 />
               </label>
 
               <label>
-                Response
+                {t('label_response')}
                 <textarea
                   value={responseText}
-                  onChange={(event) => setResponseText(event.target.value)}
-                  placeholder={'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n'}
+                  onChange={(e) => setResponseText(e.target.value)}
+                  placeholder={t('placeholder_response')}
                 />
               </label>
 
               <button className="primary-action" disabled={loading || !requestText.trim()}>
                 <Play aria-hidden="true" />
-                {loading ? 'Analyzing...' : 'Analyze'}
+                {loading ? t('btn_analyzing') : t('btn_analyze')}
               </button>
             </form>
-            <AnalysisResult analysis={analysis} streamStatuses={streamStatuses} />
+            <AnalysisResult analysis={analysis} streamStatuses={streamStatuses} streamingText={streamingText} />
           </section>
         ) : null}
 
@@ -253,7 +303,8 @@ export default function App() {
   );
 }
 
-function AnalysisResult({ analysis, streamStatuses }: { analysis: AnalysisResponse | null; streamStatuses: StreamStatus[] }) {
+function AnalysisResult({ analysis, streamStatuses, streamingText }: { analysis: AnalysisResponse | null; streamStatuses: StreamStatus[]; streamingText: string }) {
+  const { t } = useLocale();
   const streamFailed = streamStatuses.includes('failed');
   if (!analysis) {
     return (
@@ -262,22 +313,25 @@ function AnalysisResult({ analysis, streamStatuses }: { analysis: AnalysisRespon
           <>
             <div className="result-header">
               <div>
-                <h2>{streamFailed ? 'Streaming failed' : 'Streaming analysis'}</h2>
-                <span>{streamFailed ? 'Analysis did not complete' : 'Waiting for final result'}</span>
+                <h2>{streamFailed ? t('result_stream_failed') : t('result_streaming')}</h2>
+                <span>{streamFailed ? t('result_not_complete') : t('result_waiting')}</span>
               </div>
             </div>
             <ProgressList statuses={streamStatuses} />
+            {streamingText ? (
+              <pre className="streaming-text">{streamingText}</pre>
+            ) : null}
             {streamFailed ? (
               <div className="notice result-error" role="alert">
                 <AlertCircle aria-hidden="true" />
-                Stream ended without a result. The analysis could not be completed.
+                {t('result_stream_error')}
               </div>
             ) : null}
           </>
         ) : (
           <>
             <ShieldCheck aria-hidden="true" />
-            <p>Submit a request to view redacted findings.</p>
+            <p>{t('empty_state')}</p>
           </>
         )}
       </section>
@@ -288,14 +342,14 @@ function AnalysisResult({ analysis, streamStatuses }: { analysis: AnalysisRespon
       <div className="result-header">
         <div>
           <h2>{analysis.summary}</h2>
-          <span>LLM status: {analysis.llm_status}</span>
+          <span>{t('result_llm_status')}: {analysis.llm_status}</span>
         </div>
-        <span className="status-pill">{analysis.redaction_applied ? 'Redacted' : 'Not redacted'}</span>
+        <span className="status-pill">{analysis.redaction_applied ? t('result_redacted') : t('result_not_redacted')}</span>
       </div>
       {analysis.llm_status === 'failed' ? (
         <div className="notice result-error" role="alert">
           <AlertCircle aria-hidden="true" />
-          Analysis failed. The provider response could not be converted into structured findings.
+          {t('result_failed_notice')}
         </div>
       ) : null}
       <ProgressList statuses={streamStatuses} />
@@ -309,17 +363,30 @@ function AnalysisResult({ analysis, streamStatuses }: { analysis: AnalysisRespon
 }
 
 function ProgressList({ statuses }: { statuses: StreamStatus[] }) {
+  const { t } = useLocale();
   if (statuses.length === 0) return null;
+
+  const statusLabelMap: Record<string, LocaleKeys> = {
+    redacting: 'stream_redacting',
+    calling_provider: 'stream_calling_provider',
+    parsing: 'stream_parsing',
+    persisted: 'stream_persisted',
+    failed: 'stream_failed',
+  };
+
   return (
     <ol className="progress-list" aria-label="Analysis progress">
       {statuses.map((status, index) => (
-        <li key={`${status}-${index}`}>{streamStatusLabel(status)}</li>
+        <li key={`${status}-${index}`}>
+          {statusLabelMap[status] ? t(statusLabelMap[status]) : status}
+        </li>
       ))}
     </ol>
   );
 }
 
 function FindingCard({ finding }: { finding: Finding }) {
+  const { t } = useLocale();
   return (
     <article className="finding-card">
       <div className="finding-title">
@@ -328,13 +395,13 @@ function FindingCard({ finding }: { finding: Finding }) {
       </div>
       <p>{finding.evidence}</p>
       <dl>
-        <dt>Approach</dt>
+        <dt>{t('finding_approach')}</dt>
         <dd>{finding.attack_approach}</dd>
-        <dt>Remediation</dt>
+        <dt>{t('finding_remediation')}</dt>
         <dd>{finding.remediation}</dd>
         {finding.owasp_category ? (
           <>
-            <dt>OWASP</dt>
+            <dt>{t('finding_owasp')}</dt>
             <dd>{finding.owasp_category}</dd>
           </>
         ) : null}
@@ -352,6 +419,7 @@ function BatchPanel({
   onRefresh: () => void;
   setError: (msg: string | null) => void;
 }) {
+  const { t } = useLocale();
   const [batchText, setBatchText] = useState('');
   const [batchMode, setBatchMode] = useState<Mode>('analyze');
   const [submitting, setSubmitting] = useState(false);
@@ -369,7 +437,7 @@ function BatchPanel({
       setBatchText('');
       onRefresh();
     } catch (exc) {
-      setError(exc instanceof Error ? exc.message : 'Batch submit failed');
+      setError(exc instanceof Error ? exc.message : t('error_batch_failed'));
     } finally {
       setSubmitting(false);
     }
@@ -380,42 +448,42 @@ function BatchPanel({
       await cancelTask(taskId);
       onRefresh();
     } catch (exc) {
-      setError(exc instanceof Error ? exc.message : 'Cancel failed');
+      setError(exc instanceof Error ? exc.message : t('error_cancel_failed'));
     }
   }
 
   return (
     <section className="list-panel">
       <form className="analysis-form" onSubmit={handleSubmit}>
-        <div className="segmented" aria-label="Batch mode">
+        <div className="segmented" aria-label={t('batch_mode_label')}>
           <button type="button" className={batchMode === 'analyze' ? 'selected' : ''} onClick={() => setBatchMode('analyze')}>
-            <ShieldCheck aria-hidden="true" /> Analyze
+            <ShieldCheck aria-hidden="true" /> {t('mode_analyze')}
           </button>
           <button type="button" className={batchMode === 'learn' ? 'selected' : ''} onClick={() => setBatchMode('learn')}>
-            <BookOpen aria-hidden="true" /> Learn
+            <BookOpen aria-hidden="true" /> {t('mode_learn')}
           </button>
         </div>
         <label>
-          Batch requests (separate multiple with ---)
+          {t('batch_textarea_label')}
           <textarea
             value={batchText}
             onChange={(e) => setBatchText(e.target.value)}
-            placeholder={'GET /api/users HTTP/1.1\r\nHost: example.test\r\n\r\n\n---\nGET /api/orders HTTP/1.1\r\nHost: example.test\r\n\r\n'}
+            placeholder={t('batch_placeholder')}
             rows={8}
           />
         </label>
         <button className="primary-action" disabled={submitting || !batchText.trim()}>
           <Layers aria-hidden="true" />
-          {submitting ? 'Submitting...' : 'Submit batch'}
+          {submitting ? t('btn_submitting') : t('btn_submit_batch')}
         </button>
       </form>
 
-      <h3 style={{ marginTop: '1.5rem' }}>Task queue</h3>
+      <h3 style={{ marginTop: '1.5rem' }}>{t('task_queue')}</h3>
       <button type="button" className="secondary-action" onClick={onRefresh} style={{ marginBottom: '0.75rem' }}>
-        Refresh
+        {t('btn_refresh')}
       </button>
       {tasks.length === 0 ? (
-        <p className="muted">No tasks in queue.</p>
+        <p className="muted">{t('no_tasks')}</p>
       ) : (
         tasks.map((task) => (
           <article className="history-row" key={task.task_id}>
@@ -447,39 +515,40 @@ function HistoryPanel({
   setFilters: (f: HistoryFilters) => void;
   onApplyFilters: (f: HistoryFilters) => void;
 }) {
+  const { t } = useLocale();
   return (
     <section className="list-panel">
       <div className="filter-bar">
         <select
-          aria-label="Filter by mode"
+          aria-label={t('filter_all_modes')}
           value={filters.mode || ''}
           onChange={(e) => setFilters({ ...filters, mode: (e.target.value || undefined) as Mode | undefined })}
         >
-          <option value="">All modes</option>
-          <option value="analyze">Analyze</option>
-          <option value="learn">Learn</option>
+          <option value="">{t('filter_all_modes')}</option>
+          <option value="analyze">{t('mode_analyze')}</option>
+          <option value="learn">{t('mode_learn')}</option>
         </select>
         <select
-          aria-label="Filter by severity"
+          aria-label={t('filter_any_severity')}
           value={filters.min_severity || ''}
           onChange={(e) => setFilters({ ...filters, min_severity: (e.target.value || undefined) as HistoryFilters['min_severity'] })}
         >
-          <option value="">Any severity</option>
-          <option value="critical">Critical+</option>
-          <option value="high">High+</option>
-          <option value="medium">Medium+</option>
-          <option value="low">Low+</option>
+          <option value="">{t('filter_any_severity')}</option>
+          <option value="critical">{t('filter_critical')}</option>
+          <option value="high">{t('filter_high')}</option>
+          <option value="medium">{t('filter_medium')}</option>
+          <option value="low">{t('filter_low')}</option>
         </select>
         <input
-          placeholder="Target host"
+          placeholder={t('placeholder_target_host')}
           value={filters.target_host || ''}
           onChange={(e) => setFilters({ ...filters, target_host: e.target.value || undefined })}
         />
-        <button type="button" onClick={() => onApplyFilters(filters)}>Filter</button>
-        <button type="button" onClick={() => { const empty = {}; setFilters(empty); onApplyFilters(empty); }}>Clear</button>
+        <button type="button" onClick={() => onApplyFilters(filters)}>{t('btn_filter')}</button>
+        <button type="button" onClick={() => { const empty = {}; setFilters(empty); onApplyFilters(empty); }}>{t('btn_clear')}</button>
       </div>
       {items.length === 0 ? (
-        <p className="muted">No analysis history yet.</p>
+        <p className="muted">{t('no_history')}</p>
       ) : (
         items.map((item) => (
           <article className="history-row" key={item.analysis_id}>
@@ -510,10 +579,11 @@ function SettingsPanel({
   loading: boolean;
   onSubmit: (event: FormEvent) => void;
 }) {
+  const { t } = useLocale();
   return (
     <form className="settings-form" onSubmit={onSubmit}>
       <label>
-        Provider
+        {t('label_provider')}
         <select
           value={settings.provider}
           onChange={(event) => {
@@ -533,57 +603,42 @@ function SettingsPanel({
         </select>
       </label>
       <label>
-        Model
+        {t('label_model')}
         <input value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} />
       </label>
       <label>
-        Base URL
+        {t('label_base_url')}
         <input
           value={settings.base_url ?? ''}
           onChange={(event) => setSettings({ ...settings, base_url: event.target.value || null })}
-          placeholder="http://127.0.0.1:11434/v1"
+          placeholder={t('placeholder_base_url')}
         />
       </label>
       {settings.provider !== 'ollama' ? (
         <label>
-          API key
+          {t('label_api_key')}
           <input
             type="password"
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
-            placeholder={settings.has_api_key ? 'Leave blank to keep current key' : 'Paste provider key'}
+            placeholder={settings.has_api_key ? t('placeholder_api_key_keep') : t('placeholder_api_key_paste')}
           />
         </label>
       ) : null}
       {settings.provider !== 'ollama' ? (
         <div className="key-state">
-          <span>Configured key</span>
-          <strong>{settings.masked_api_key || 'Not configured'}</strong>
+          <span>{t('configured_key')}</span>
+          <strong>{settings.masked_api_key || t('not_configured')}</strong>
         </div>
       ) : null}
       {settings.provider === 'ollama' ? (
-        <p className="muted">Ollama runs locally and does not require an API key.</p>
+        <p className="muted">{t('ollama_note')}</p>
       ) : null}
       <button className="primary-action" disabled={loading}>
         <KeyRound aria-hidden="true" />
-        Save Provider
+        {t('btn_save_provider')}
       </button>
     </form>
   );
 }
 
-function viewTitle(view: View) {
-  if (view === 'batch') return 'Batch analysis';
-  if (view === 'history') return 'Analysis history';
-  if (view === 'settings') return 'Provider settings';
-  return 'Manual analysis';
-}
-
-function streamStatusLabel(status: StreamStatus) {
-  if (status === 'calling_provider') return 'Calling provider';
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unexpected error';
-}

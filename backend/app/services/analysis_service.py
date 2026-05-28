@@ -50,7 +50,16 @@ class AnalysisService:
         analysis_id = self.history.create_analysis_id()
 
         yield "status", {"status": "calling_provider"}
-        raw_output = await self._call_provider(system_prompt, user_prompt)
+        raw_output = None
+        try:
+            collected: list[str] = []
+            async for chunk in self.provider.analyze_stream(system_prompt, user_prompt):
+                collected.append(chunk)
+                yield "content", {"text": chunk}
+            raw_output = "".join(collected)
+        except Exception as exc:
+            logger.warning("provider stream failed: %s", type(exc).__name__)
+
         if raw_output is not None:
             yield "status", {"status": "parsing"}
             parsed, llm_status = await self._parse_raw(raw_output)
@@ -101,6 +110,6 @@ class AnalysisService:
 
 def _failure_payload() -> dict:
     return {
-        "summary": "The LLM response could not be parsed into the required schema.",
+        "summary": "LLM 响应无法解析为要求的 JSON 格式。",
         "findings": [],
     }

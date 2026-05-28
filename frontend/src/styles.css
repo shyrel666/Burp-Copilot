@@ -460,6 +460,22 @@ select {
   min-height: 460px;
 }
 
+.streaming-text {
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-inset, #f8f9fa);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 8px 0;
+  max-height: 400px;
+  overflow-y: auto;
+  color: var(--text-default, #334155);
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -657,7 +673,21 @@ select {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
+  overflow: hidden;
   transition: all var(--duration-fast) var(--ease-out);
+}
+
+.history-row > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.history-row > div > strong,
+.history-row > div > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .history-row:hover {
@@ -667,6 +697,10 @@ select {
 
 .history-row + .history-row {
   margin-top: 8px;
+}
+
+.history-row .status-pill {
+  flex-shrink: 0;
 }
 
 .history-row strong {

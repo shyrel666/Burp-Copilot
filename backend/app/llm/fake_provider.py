@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.llm.base import BaseLLMProvider, HealthCheckResult
 
 
@@ -23,6 +25,16 @@ class FakeLLMProvider(BaseLLMProvider):
         if self.invalid_once and self.calls == 1:
             return "This is not JSON"
         return VALID_RESPONSE
+
+    async def analyze_stream(self, system_prompt: str, user_prompt: str):
+        self.calls += 1
+        if self.invalid_once and self.calls == 1:
+            yield "This is not JSON"
+            return
+        chunk_size = max(1, len(VALID_RESPONSE) // 8)
+        for i in range(0, len(VALID_RESPONSE), chunk_size):
+            yield VALID_RESPONSE[i:i + chunk_size]
+            await asyncio.sleep(0.01)
 
     async def repair_json(self, invalid_text: str, error: str) -> str:
         return VALID_RESPONSE

@@ -36,6 +36,7 @@ export function analyzeTraffic(input: AnalyzeTrafficInput): Promise<AnalysisResp
 export async function analyzeTrafficStream(
   input: AnalyzeTrafficInput,
   onStatus: (status: StreamStatus) => void,
+  onContent?: (text: string) => void,
 ): Promise<AnalysisResponse> {
   const response = await fetch(`${API_BASE}/api/v1/analyze/stream`, {
     method: 'POST',
@@ -49,7 +50,7 @@ export async function analyzeTrafficStream(
     const body = await response.text();
     throw new Error(body || `HTTP ${response.status}`);
   }
-  return readAnalysisStream(response, onStatus);
+  return readAnalysisStream(response, onStatus, onContent);
 }
 
 export function fetchHistory(filters?: HistoryFilters): Promise<AnalysisHistoryItem[]> {
@@ -138,6 +139,7 @@ function analyzePayload(input: AnalyzeTrafficInput) {
 async function readAnalysisStream(
   response: Response,
   onStatus: (status: StreamStatus) => void,
+  onContent?: (text: string) => void,
 ): Promise<AnalysisResponse> {
   let buffer = '';
   let result: AnalysisResponse | null = null;
@@ -157,6 +159,9 @@ async function readAnalysisStream(
     if (!parsed) return;
     if (parsed.event === 'status' && isStreamStatus(parsed.data.status)) {
       onStatus(parsed.data.status);
+    }
+    if (parsed.event === 'content' && typeof parsed.data.text === 'string' && onContent) {
+      onContent(parsed.data.text);
     }
     if (parsed.event === 'result' && isRecord(parsed.data.analysis)) {
       result = parsed.data.analysis as unknown as AnalysisResponse;

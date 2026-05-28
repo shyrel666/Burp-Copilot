@@ -88,12 +88,12 @@ describe('dashboard', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(screen.getByLabelText(/request/i), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
-    await user.click(screen.getByRole('button', { name: /analyze/i }));
+    await user.type(screen.getByLabelText(/请求/), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
+    await user.click(document.querySelector('.primary-action')!);
 
     expect(await screen.findByText('Checked request')).toBeInTheDocument();
-    expect(screen.getByText('Calling provider')).toBeInTheDocument();
-    expect(screen.getByText('Persisted')).toBeInTheDocument();
+    expect(screen.getByText('调用提供商')).toBeInTheDocument();
+    expect(screen.getByText('已保存')).toBeInTheDocument();
     expect(screen.getByText('Missing security header')).toBeInTheDocument();
     expect(screen.getByText('low')).toBeInTheDocument();
   });
@@ -102,12 +102,12 @@ describe('dashboard', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /设置/ }));
     await screen.findByText('sk-...1234');
-    await user.clear(screen.getByLabelText(/model/i));
-    await user.type(screen.getByLabelText(/model/i), 'gpt-test');
-    await user.type(screen.getByLabelText(/api key/i), 'sk-test-key-9999');
-    await user.click(screen.getByRole('button', { name: /save provider/i }));
+    await user.clear(screen.getByLabelText(/模型/));
+    await user.type(screen.getByLabelText(/模型/), 'gpt-test');
+    await user.type(screen.getByLabelText(/API 密钥/), 'sk-test-key-9999');
+    await user.click(screen.getByRole('button', { name: /保存提供商/ }));
 
     await waitFor(() => expect(screen.getByText('sk-...9999')).toBeInTheDocument());
     expect(screen.queryByText('sk-test-key-9999')).not.toBeInTheDocument();
@@ -157,14 +157,14 @@ describe('dashboard', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /设置/ }));
     await screen.findByText('sk-...1234');
-    await user.selectOptions(screen.getByLabelText(/provider/i), 'openai-compatible');
-    await user.clear(screen.getByLabelText(/model/i));
-    await user.type(screen.getByLabelText(/model/i), 'gpt-compat');
-    await user.type(screen.getByLabelText(/base url/i), 'http://127.0.0.1:11434/v1');
-    await user.type(screen.getByLabelText(/api key/i), 'sk-test-key-9999');
-    await user.click(screen.getByRole('button', { name: /save provider/i }));
+    await user.selectOptions(screen.getByLabelText(/提供商/), 'openai-compatible');
+    await user.clear(screen.getByLabelText(/模型/));
+    await user.type(screen.getByLabelText(/模型/), 'gpt-compat');
+    await user.type(screen.getByLabelText(/基础 URL/), 'http://127.0.0.1:11434/v1');
+    await user.type(screen.getByLabelText(/API 密钥/), 'sk-test-key-9999');
+    await user.click(screen.getByRole('button', { name: /保存提供商/ }));
 
     await waitFor(() => expect(screen.getByText('sk-...9999')).toBeInTheDocument());
     expect(screen.queryByText('sk-test-key-9999')).not.toBeInTheDocument();
@@ -189,52 +189,52 @@ describe('dashboard', () => {
     render(<App />);
 
     await user.type(
-      screen.getByLabelText(/request/i),
+      screen.getByLabelText(/请求/),
       `POST /login HTTP/1.1\r\nHost: example.test\r\nAuthorization: Bearer ${secret}\r\n\r\npassword=${secret}`,
     );
-    await user.click(screen.getByRole('button', { name: /analyze/i }));
+    await user.click(document.querySelector('.primary-action')!);
 
     const failureAlert = await screen.findByRole('alert');
-    expect(failureAlert).toHaveTextContent(/analysis failed/i);
+    expect(failureAlert).toHaveTextContent(/分析失败/);
     expect(failureAlert).not.toHaveTextContent(secret);
-    expect(screen.getByText('Failed')).toBeInTheDocument();
+    expect(screen.getByText('失败')).toBeInTheDocument();
   });
 
   test('ollama provider hides api key field and shows local notice', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /settings/i }));
+    await user.click(screen.getByRole('button', { name: /设置/ }));
     await screen.findByText('sk-...1234');
-    await user.selectOptions(screen.getByLabelText(/provider/i), 'ollama');
+    await user.selectOptions(screen.getByLabelText(/提供商/), 'ollama');
 
-    expect(screen.getByLabelText(/model/i)).toHaveValue('llama3');
-    expect(screen.getByLabelText(/base url/i)).toHaveValue('http://localhost:11434');
-    expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/ollama runs locally and does not require an api key/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/模型/)).toHaveValue('llama3');
+    expect(screen.getByLabelText(/基础 URL/)).toHaveValue('http://localhost:11434');
+    expect(screen.queryByLabelText(/API 密钥/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Ollama 在本地运行，不需要 API 密钥/)).toBeInTheDocument();
   });
 
   test('batch panel submits items and shows task queue', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /^batch$/i }));
-    await user.type(screen.getByLabelText(/batch requests/i), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
-    await user.click(screen.getByRole('button', { name: /submit batch/i }));
+    await user.click(screen.getByRole('button', { name: /^批量$/ }));
+    await user.type(screen.getByLabelText(/批量请求/), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
+    await user.click(screen.getByRole('button', { name: /提交批量/ }));
 
-    expect(await screen.findByText('No tasks in queue.')).toBeInTheDocument();
+    expect(await screen.findByText('队列中没有任务。')).toBeInTheDocument();
   });
 
   test('history panel shows filter controls', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole('button', { name: /history/i }));
+    await user.click(screen.getByRole('button', { name: /历史/ }));
 
-    expect(screen.getByLabelText(/filter by mode/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/filter by severity/i)).toBeInTheDocument();
-    expect(screen.getByText(/filter/i)).toBeInTheDocument();
-    expect(screen.getByText(/clear/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/所有模式/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/任意严重性/)).toBeInTheDocument();
+    expect(screen.getByText(/筛选/)).toBeInTheDocument();
+    expect(screen.getByText(/清除/)).toBeInTheDocument();
   });
 
   test('interrupted stream marks progress failed instead of waiting for a final result', async () => {
@@ -254,14 +254,14 @@ describe('dashboard', () => {
     );
     render(<App />);
 
-    await user.type(screen.getByLabelText(/request/i), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
-    await user.click(screen.getByRole('button', { name: /analyze/i }));
+    await user.type(screen.getByLabelText(/请求/), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
+    await user.click(document.querySelector('.primary-action')!);
 
     const alerts = await screen.findAllByRole('alert');
-    expect(alerts[0]).toHaveTextContent('Streaming analysis ended without a result');
-    expect(screen.getByText('Streaming failed')).toBeInTheDocument();
-    expect(screen.getByText('Failed')).toBeInTheDocument();
-    expect(screen.queryByText('Waiting for final result')).not.toBeInTheDocument();
+    expect(alerts[0]).toHaveTextContent(/Streaming analysis ended without a result/);
+    expect(screen.getByText('流式传输失败')).toBeInTheDocument();
+    expect(screen.getByText('失败')).toBeInTheDocument();
+    expect(screen.queryByText('等待最终结果')).not.toBeInTheDocument();
   });
 
 
@@ -281,6 +281,12 @@ function sseResponse(analysis: unknown, finalStatus = 'persisted'): Response {
     '',
     'event: status',
     'data: {"status":"calling_provider"}',
+    '',
+    'event: content',
+    'data: {"text":"chunk1"}',
+    '',
+    'event: content',
+    'data: {"text":"chunk2"}',
     '',
     'event: status',
     'data: {"status":"parsing"}',
@@ -314,4 +320,3 @@ function incompleteSseResponse(): Response {
     headers: { 'Content-Type': 'text/event-stream' },
   });
 }
-

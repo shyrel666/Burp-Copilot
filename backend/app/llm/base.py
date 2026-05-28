@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 
@@ -14,6 +15,10 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     async def analyze(self, system_prompt: str, user_prompt: str) -> str:
         raise NotImplementedError
+
+    async def analyze_stream(self, system_prompt: str, user_prompt: str) -> AsyncIterator[str]:
+        result = await self.analyze(system_prompt, user_prompt)
+        yield result
 
     @abstractmethod
     async def repair_json(self, invalid_text: str, error: str) -> str:

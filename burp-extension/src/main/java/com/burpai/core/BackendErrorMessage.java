@@ -12,48 +12,48 @@ public final class BackendErrorMessage {
         String message = exc.getMessage() != null ? exc.getMessage() : exc.getClass().getSimpleName();
 
         if (containsAny(message, "SocketTimeoutException", "timed out", "Read timed out", "connect timed out")) {
-            return "Backend request timed out.\n\n"
-                    + "This usually means the LLM provider is slow or unreachable.\n"
-                    + "Check:\n"
-                    + "  1. Backend URL and token are correct\n"
-                    + "  2. Provider API key is configured in backend .env (or Ollama is running locally)\n"
-                    + "  3. Network can reach the provider endpoint\n"
-                    + "  4. Provider health check passes in the dashboard";
+            return "后端请求超时。\n\n"
+                    + "通常意味着 LLM 提供商响应缓慢或不可达。\n"
+                    + "请检查：\n"
+                    + "  1. 后端 URL 和 Token 是否正确\n"
+                    + "  2. 提供商 API 密钥是否已在后端配置（或 Ollama 是否在本地运行）\n"
+                    + "  3. 网络是否能访问提供商端点\n"
+                    + "  4. 控制面板中提供商健康检查是否通过";
         }
 
         if (containsAny(message, "HTTP 401", "401 Unauthorized", "HTTP 403", "403 Forbidden")) {
-            return "Authentication failed (HTTP 401/403).\n\n"
-                    + "The backend rejected the request. Check:\n"
-                    + "  1. Backend Token matches the BACKEND_TOKEN in the backend .env\n"
-                    + "  2. The token does not contain extra whitespace or line breaks";
+            return "认证失败（HTTP 401/403）。\n\n"
+                    + "后端拒绝了请求。请检查：\n"
+                    + "  1. 后端 Token 是否与后端 .env 中的 BACKEND_TOKEN 一致\n"
+                    + "  2. Token 中是否包含多余的空格或换行符";
         }
 
         if (containsAny(message, "HTTP 404", "404 Not Found")) {
-            return "Backend endpoint not found (HTTP 404).\n\n"
-                    + "The backend URL may be incorrect or the backend version is mismatched.\n"
-                    + "Verify the Backend URL points to a running instance of this project's backend.";
+            return "后端端点未找到（HTTP 404）。\n\n"
+                    + "后端 URL 可能不正确，或后端版本不匹配。\n"
+                    + "请确认后端 URL 指向本项目正在运行的后端实例。";
         }
 
         if (containsAny(message, "ConnectException", "Connection refused", "Connection timed out", "No route to host")) {
-            return "Backend is unreachable.\n\n"
-                    + "Could not connect to the backend. Check:\n"
-                    + "  1. The backend server is running\n"
-                    + "  2. The Backend URL is correct (default: http://localhost:8000)\n"
-                    + "  3. No firewall is blocking the connection";
+            return "无法连接后端。\n\n"
+                    + "无法建立到后端的连接。请检查：\n"
+                    + "  1. 后端服务是否正在运行\n"
+                    + "  2. 后端 URL 是否正确（默认：http://localhost:8000）\n"
+                    + "  3. 防火墙是否阻止了连接";
         }
 
         if (containsAny(message, "HTTP 5")) {
-            return "Backend server error (" + extractHttpStatus(message) + ").\n\n"
-                    + "The backend encountered an internal error. Check the backend logs for details.";
+            return "后端服务器错误（" + extractHttpStatus(message) + "）。\n\n"
+                    + "后端遇到内部错误，请查看后端日志了解详情。";
         }
 
         if (containsAny(message, "JsonException", "JSONException", "SyntaxError", "not valid JSON", "Unexpected character")) {
-            return "Malformed response from backend.\n\n"
-                    + "The backend returned data that could not be parsed.\n"
-                    + "Check the backend logs and ensure the backend version matches the extension.";
+            return "后端返回了格式错误的响应。\n\n"
+                    + "后端返回的数据无法解析。\n"
+                    + "请检查后端日志，并确保后端版本与扩展匹配。";
         }
 
-        return "Backend request failed: " + message;
+        return "后端请求失败：" + message;
     }
 
     private static boolean containsAny(String haystack, String... needles) {

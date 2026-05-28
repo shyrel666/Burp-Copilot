@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -37,6 +39,14 @@ class OllamaProvider(BaseLLMProvider):
                 {"role": "user", "content": user_prompt},
             ]
         )
+
+    async def analyze_stream(self, system_prompt: str, user_prompt: str) -> AsyncIterator[str]:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        async for chunk in self._chat_stream(messages):
+            yield chunk
 
     async def repair_json(self, invalid_text: str, error: str) -> str:
         return await self._chat(
@@ -91,3 +101,37 @@ class OllamaProvider(BaseLLMProvider):
             return payload["choices"][0]["message"]["content"]
 
         raise AssertionError("unreachable: _chat retry loop must return or raise")
+
+    async def _chat_stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
+        for attempt in range(1, self.max_attempts + 1):
+            is_last = attempt == self.max_attempts
+            try:
+                async with self._client(timeout=self.request_timeout) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{self.base_url}/v1/chat/completions",
+                        json={"model": self.model, "messages": messages, "temperature": 0.1, "stream": True},
+                    ) as response:
+                        if response.status_code in _TRANSIENT_STATUS_CODES and not is_last:
+                            await asyncio.sleep(self.retry_backoff * attempt)
+                            continue
+                        response.raise_for_status()
+                        async for line in response.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            data = line[len("data: "):]
+                            if data.strip() == "[DONE]":
+                                return
+                            try:
+                                payload = json.loads(data)
+                                content = payload.get("choices", [{}])[0].get("delta", {}).get("content")
+                                if content:
+                                    yield content
+                            except (json.JSONDecodeError, IndexError, KeyError):
+                                continue
+                        return
+            except (httpx.TimeoutException, httpx.TransportError):
+                if is_last:
+                    raise
+                await asyncio.sleep(self.retry_backoff * attempt)
+                continue
