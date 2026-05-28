@@ -43,7 +43,7 @@ class ExtensionSettingsTest {
     void backendErrorMessageHandlesCancellationException() {
         Exception exc = new java.util.concurrent.CancellationException();
         String result = BackendErrorMessage.forException(exc);
-        assertTrue(result.contains("Backend request failed"));
+        assertTrue(result.contains("后端请求失败"));
     }
 
     @Test
