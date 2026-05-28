@@ -65,6 +65,7 @@ export const en: Record<LocaleKeys, string> = {
   btn_filter: 'Filter',
   btn_clear: 'Clear',
   no_history: 'No analysis history yet.',
+  no_findings: 'No findings reported for this analysis.',
 
   // Settings
   label_provider: 'Provider',

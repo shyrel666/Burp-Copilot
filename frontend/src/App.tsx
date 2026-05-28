@@ -578,6 +578,17 @@ function HistoryPanel({
 function HistoryDetailModal({ item, onClose }: { item: AnalysisHistoryItem; onClose: () => void }) {
   const { t } = useLocale();
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -592,7 +603,7 @@ function HistoryDetailModal({ item, onClose }: { item: AnalysisHistoryItem; onCl
         </div>
         <div className="modal-body">
           {item.findings.length === 0 ? (
-            <p className="muted">{t('no_history')}</p>
+            <p className="muted">{t('no_findings')}</p>
           ) : (
             <div className="findings-list">
               {item.findings.map((finding) => (

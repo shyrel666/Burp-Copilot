@@ -63,6 +63,7 @@ export const zh = {
   btn_filter: '筛选',
   btn_clear: '清除',
   no_history: '暂无分析历史。',
+  no_findings: '该分析未报告任何发现。',
 
   // Settings
   label_provider: '提供商',
