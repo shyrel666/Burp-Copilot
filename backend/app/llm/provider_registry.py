@@ -25,6 +25,13 @@ def build_provider(config: ProviderConfig) -> BaseLLMProvider:
             raise ValueError("openai-compatible provider requires base_url")
         return OpenAIProvider(api_key=config.api_key, model=config.model, base_url=config.base_url)
 
+    if config.provider == ProviderName.DEEPSEEK.value:
+        return OpenAIProvider(
+            api_key=config.api_key,
+            model=config.model or "deepseek-v4-pro",
+            base_url="https://api.deepseek.com",
+        )
+
     if config.provider == ProviderName.OLLAMA.value:
         return OllamaProvider(model=config.model, base_url=config.base_url)
 

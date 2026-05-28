@@ -1,6 +1,6 @@
 export type Mode = 'analyze' | 'learn';
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
-export type ProviderName = 'openai' | 'openai-compatible' | 'ollama';
+export type ProviderName = 'openai' | 'openai-compatible' | 'deepseek' | 'ollama';
 export type StreamStatus = 'redacting' | 'calling_provider' | 'parsing' | 'persisted' | 'failed';
 
 export interface Finding {

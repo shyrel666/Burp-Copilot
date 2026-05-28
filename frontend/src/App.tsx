@@ -16,11 +16,13 @@ const emptySettings: ProviderSettings = {
 
 function defaultModelForProvider(provider: ProviderName): string {
   if (provider === 'ollama') return 'llama3';
+  if (provider === 'deepseek') return 'deepseek-v4-pro';
   return 'gpt-4o-mini';
 }
 
 function defaultBaseUrlForProvider(provider: ProviderName): string | null {
   if (provider === 'ollama') return 'http://localhost:11434';
+  if (provider === 'deepseek') return null;
   return null;
 }
 
@@ -599,6 +601,7 @@ function SettingsPanel({
         >
           <option value="openai">openai</option>
           <option value="openai-compatible">openai-compatible</option>
+          <option value="deepseek">deepseek</option>
           <option value="ollama">ollama</option>
         </select>
       </label>
@@ -606,14 +609,16 @@ function SettingsPanel({
         {t('label_model')}
         <input value={settings.model} onChange={(event) => setSettings({ ...settings, model: event.target.value })} />
       </label>
-      <label>
-        {t('label_base_url')}
-        <input
-          value={settings.base_url ?? ''}
-          onChange={(event) => setSettings({ ...settings, base_url: event.target.value || null })}
-          placeholder={t('placeholder_base_url')}
-        />
-      </label>
+      {settings.provider !== 'deepseek' ? (
+        <label>
+          {t('label_base_url')}
+          <input
+            value={settings.base_url ?? ''}
+            onChange={(event) => setSettings({ ...settings, base_url: event.target.value || null })}
+            placeholder={t('placeholder_base_url')}
+          />
+        </label>
+      ) : null}
       {settings.provider !== 'ollama' ? (
         <label>
           {t('label_api_key')}
