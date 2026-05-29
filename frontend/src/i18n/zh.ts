@@ -1,7 +1,7 @@
 export const zh = {
   // Sidebar
-  brand_name: 'Burp AI',
-  brand_sub: 'HTTP 分析器',
+  brand_name: 'Burp Copilot',
+  brand_sub: 'AI 安全副驾',
   nav_analyze: '分析',
   nav_batch: '批量',
   nav_history: '历史',

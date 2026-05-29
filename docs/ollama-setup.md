@@ -25,7 +25,7 @@ Ollama provides a privacy-first alternative to cloud LLM providers. All inferenc
 
    The default API endpoint is `http://localhost:11434`.
 
-4. In the Burp AI dashboard, go to **Settings** and configure:
+4. In the Burp Copilot dashboard, go to **Settings** and configure:
 
    - **Provider**: `ollama`
    - **Model**: `llama3` (or whichever model you pulled)

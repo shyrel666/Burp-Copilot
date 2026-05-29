@@ -6,7 +6,7 @@
 - Regenerate OpenAPI after API changes: `cd backend && python scripts/export_openapi.py`.
 - Build Docker images: `docker compose build`.
 - Run Burp extension build in an environment with Maven and JDK 21+: `cd burp-extension && mvn test package`.
-- Confirm the GitHub Actions `burp-extension` job uploads the `burp-ai-extension-jar` artifact.
+- Confirm the GitHub Actions `burp-extension` job uploads the `burp-copilot-extension-jar` artifact.
 - Confirm the GitHub Actions `Release` workflow runs backend, frontend, Burp extension, OpenAPI export, and secret scan steps.
 - Run a secret scan before tagging and review any dummy-key false positives.
 - Confirm release artifacts contain only the Burp extension JAR, frontend build archive, OpenAPI export, and GitHub-generated source archives.

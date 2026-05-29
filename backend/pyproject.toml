@@ -1,7 +1,7 @@
 [project]
-name = "burp-ai-backend"
+name = "burp-copilot-backend"
 version = "0.1.0"
-description = "FastAPI backend for Burp AI HTTP Traffic Analyzer"
+description = "FastAPI backend for Burp Copilot"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.0",

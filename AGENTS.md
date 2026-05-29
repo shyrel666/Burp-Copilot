@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This repository is a local-first Burp AI HTTP Traffic Analyzer. Follow these instructions when acting as an AI coding agent in this project.
+This repository is Burp Copilot, a local-first Burp HTTP traffic analysis assistant. Follow these instructions when acting as an AI coding agent in this project.
 
 ## Project boundaries
 
@@ -22,11 +22,11 @@ The Burp extension JAR is built by GitHub Actions, not manually stored in the re
 - Trigger: push or pull request against `main`
 - Job: `burp-extension`
 - Build command in CI: `cd burp-extension && mvn test package`
-- Uploaded artifact name: `burp-ai-extension-jar`
-- Artifact path in CI: `burp-extension/target/burp-ai-extension-*.jar`
+- Uploaded artifact name: `burp-copilot-extension-jar`
+- Artifact path in CI: `burp-extension/target/burp-copilot-extension-*.jar`
 - Artifact retention: 14 days
 
-When extension code changes are ready, commit and push them to `main`, wait for the CI workflow to pass, then download the `burp-ai-extension-jar` artifact from the latest GitHub Actions run and load that JAR into Burp Suite.
+When extension code changes are ready, commit and push them to `main`, wait for the CI workflow to pass, then download the `burp-copilot-extension-jar` artifact from the latest GitHub Actions run and load that JAR into Burp Suite.
 
 Do not commit generated JAR files. If local Maven is unavailable, use GitHub Actions as the source of the extension JAR.
 

@@ -74,13 +74,13 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
             }
         });
         this.autoEngine = new AutoAnalysisEngine(api, scopeStore, settings);
-        api.extension().setName("AI HTTP 分析器");
-        api.userInterface().registerSuiteTab("AI Analyzer", createPanel());
+        api.extension().setName("Burp Copilot");
+        api.userInterface().registerSuiteTab("Burp Copilot", createPanel());
         api.userInterface().registerContextMenuItemsProvider(this);
         api.proxy().registerResponseHandler(new AutoAnalysisProxyListener(autoEngine));
         api.extension().registerUnloadingHandler(autoEngine::stop);
         autoEngine.start();
-        api.logging().logToOutput("AI HTTP 分析器已加载。");
+        api.logging().logToOutput("Burp Copilot 已加载。");
     }
 
     @Override

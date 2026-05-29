@@ -81,9 +81,9 @@ jobs:
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: burp-ai-release-artifacts
+          name: burp-copilot-release-artifacts
           path: |
-            burp-extension/target/burp-ai-extension-*.jar
+            burp-extension/target/burp-copilot-extension-*.jar
             frontend-dist.tar.gz
             docs/openapi.json
           if-no-files-found: error
@@ -96,6 +96,6 @@ jobs:
           draft: true
           generate_release_notes: true
           files: |
-            burp-extension/target/burp-ai-extension-*.jar
+            burp-extension/target/burp-copilot-extension-*.jar
             frontend-dist.tar.gz
             docs/openapi.json

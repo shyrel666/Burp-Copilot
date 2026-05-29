@@ -61,7 +61,7 @@ jobs:
       - name: Upload extension JAR
         uses: actions/upload-artifact@v4
         with:
-          name: burp-ai-extension-jar
-          path: burp-extension/target/burp-ai-extension-*.jar
+          name: burp-copilot-extension-jar
+          path: burp-extension/target/burp-copilot-extension-*.jar
           if-no-files-found: error
           retention-days: 14

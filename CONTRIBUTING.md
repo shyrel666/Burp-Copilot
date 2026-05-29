@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve Burp AI HTTP Traffic Analyzer.
+Thanks for helping improve Burp Copilot.
 
 ## Development Rules
 

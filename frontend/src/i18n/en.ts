@@ -2,8 +2,8 @@ import type { LocaleKeys } from './zh';
 
 export const en: Record<LocaleKeys, string> = {
   // Sidebar
-  brand_name: 'Burp AI',
-  brand_sub: 'HTTP Analyzer',
+  brand_name: 'Burp Copilot',
+  brand_sub: 'AI Security Copilot',
   nav_analyze: 'Analyze',
   nav_batch: 'Batch',
   nav_history: 'History',

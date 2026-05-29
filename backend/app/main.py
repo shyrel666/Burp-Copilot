@@ -72,7 +72,7 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
         yield
         await worker.stop()
 
-    app = FastAPI(title="Burp AI HTTP Traffic Analyzer", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Burp Copilot", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",

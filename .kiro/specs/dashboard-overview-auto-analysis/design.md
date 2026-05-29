@@ -2,7 +2,7 @@
 
 ## Overview
 
-本设计文档描述 Burp AI HTTP Traffic Analyzer 的两个核心增强功能的技术实现方案：
+本设计文档描述 Burp Copilot 的两个核心增强功能的技术实现方案：
 
 1. **Dashboard 概览页面** — 在 Web 前端新增仪表盘首页，展示分析统计、严重性分布和最近发现时间线。后端新增 Statistics API 提供聚合数据。
 2. **自动分析规则引擎** — 在 Burp 扩展中新增 Scope Rule 配置、URL 匹配、自动流量提交、Proxy History 高亮标记和 UI 配置面板。

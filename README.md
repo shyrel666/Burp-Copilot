@@ -1,4 +1,4 @@
-# Burp AI HTTP Traffic Analyzer
+# Burp Copilot
 
 An open-source MVP for authorized HTTP traffic review with Burp Suite, a local FastAPI backend, and a React dashboard.
 
@@ -94,7 +94,7 @@ cd burp-extension
 mvn test package
 ```
 
-The release and CI workflows also build the extension JAR. Download the `burp-ai-extension-jar` or release JAR artifact from GitHub Actions/Releases, then load it in Burp Suite Professional or Community under Extensions.
+The release and CI workflows also build the extension JAR. Download the `burp-copilot-extension-jar` or release JAR artifact from GitHub Actions/Releases, then load it in Burp Suite Professional or Community under Extensions.
 
 Generated JAR files are not committed to this repository.
 
