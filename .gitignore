@@ -54,6 +54,9 @@ burp-extension/target/
 captures/
 traffic-samples/
 
+# Kiro local workspace
+.kiro/
+
 # Editors and OS files
 .idea/
 .vscode/
