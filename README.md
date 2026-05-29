@@ -54,6 +54,22 @@ Burp Montoya extension
 
 ## Local Setup
 
+### One-command dev start (Windows)
+
+For day-to-day development, use the helper script instead of Docker. It starts the
+backend (`uvicorn --reload`) and the frontend (`vite dev`) in two windows, both with
+hot reload:
+
+```powershell
+.\dev.ps1
+```
+
+The first run creates the backend `.venv` and installs backend/frontend dependencies
+automatically; later runs reuse them. Use `.\dev.ps1 -Reinstall` after changing backend
+dependencies. Backend: `http://127.0.0.1:8000` (docs at `/docs`). Frontend:
+`http://127.0.0.1:5173`. Dev mode needs no `BACKEND_TOKEN`; set `OPENAI_API_KEY` for LLM
+analysis. Stop the services by closing the two spawned PowerShell windows.
+
 ### Docker Compose
 
 Docker Compose runs the backend and frontend only. Postgres, Redis, Celery, and Ollama are not started by this stack.
