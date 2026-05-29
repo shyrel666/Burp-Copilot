@@ -1,4 +1,4 @@
-import { AlertCircle, Compass, ShieldAlert, Sparkles } from 'lucide-react';
+import { AlertCircle, Compass, ShieldAlert, Sparkles, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchArchitecture,
@@ -19,11 +19,11 @@ import type {
 
 const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
 const SEVERITY_COLORS: Record<Severity, string> = {
-  critical: '#ef4444',
-  high: '#f97316',
-  medium: '#eab308',
-  low: '#3b82f6',
-  info: '#64748b',
+  critical: '#ff4757',
+  high: '#ff8c42',
+  medium: '#f0b429',
+  low: '#34d399',
+  info: '#5eead4',
 };
 
 export function Dashboard({ onSelectAnalysis }: { onSelectAnalysis: (id: string) => void }) {
@@ -246,6 +246,7 @@ function ArchitecturePanel({ hosts }: { hosts: string[] }) {
   const [roadmap, setRoadmap] = useState<RoadmapResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (!host && hosts.length > 0) setHost(hosts[0]);
@@ -267,6 +268,7 @@ function ArchitecturePanel({ hosts }: { hosts: string[] }) {
       const result = await fetchRoadmap(host);
       setRoadmap(result);
       if (result.llm_status === 'failed') setFailed(true);
+      else setModalOpen(true);
     } catch {
       setFailed(true);
     } finally {
@@ -304,8 +306,19 @@ function ArchitecturePanel({ hosts }: { hosts: string[] }) {
 
       <button type="button" className="secondary-action" disabled={!host || loading} onClick={generate}>
         <Sparkles aria-hidden="true" size={14} />
-        {loading ? t('roadmap_generating') : t('arch_generate_roadmap')}
+        {loading
+          ? t('roadmap_generating')
+          : roadmap && !failed
+            ? t('roadmap_regenerate')
+            : t('arch_generate_roadmap')}
       </button>
+
+      {roadmap && !failed && !loading ? (
+        <button type="button" className="secondary-action" onClick={() => setModalOpen(true)}>
+          <Compass aria-hidden="true" size={14} />
+          {t('roadmap_view')}
+        </button>
+      ) : null}
 
       {failed ? (
         <div className="notice result-error" role="alert">
@@ -314,8 +327,44 @@ function ArchitecturePanel({ hosts }: { hosts: string[] }) {
         </div>
       ) : null}
 
-      {roadmap && !failed ? <RoadmapView roadmap={roadmap} /> : null}
+      {modalOpen && roadmap && !failed ? (
+        <RoadmapModal roadmap={roadmap} onClose={() => setModalOpen(false)} />
+      ) : null}
     </article>
+  );
+}
+
+function RoadmapModal({ roadmap, onClose }: { roadmap: RoadmapResponse; onClose: () => void }) {
+  const { t } = useLocale();
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h2>{t('roadmap_title')}</h2>
+            {roadmap.host ? <span className="muted">{roadmap.host}</span> : null}
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modal-body">
+          <RoadmapView roadmap={roadmap} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -326,7 +375,6 @@ function RoadmapView({ roadmap }: { roadmap: RoadmapResponse }) {
   }
   return (
     <div className="roadmap">
-      <h4>{t('roadmap_title')}</h4>
       {roadmap.stages.map((stage, si) => (
         <div className="roadmap-stage" key={`${stage.stage}-${si}`}>
           <div className="roadmap-stage-head">

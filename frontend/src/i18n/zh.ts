@@ -127,6 +127,8 @@ export const zh = {
   arch_confidence: '置信度',
   arch_unknown: '未知',
   arch_generate_roadmap: '生成测试路线图',
+  roadmap_view: '查看测试路线图',
+  roadmap_regenerate: '重新生成路线图',
   roadmap_title: '分阶段测试路线图',
   roadmap_generating: '正在生成路线图...',
   roadmap_objective: '目标',

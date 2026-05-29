@@ -129,6 +129,8 @@ export const en: Record<LocaleKeys, string> = {
   arch_confidence: 'Confidence',
   arch_unknown: 'Unknown',
   arch_generate_roadmap: 'Generate testing roadmap',
+  roadmap_view: 'View testing roadmap',
+  roadmap_regenerate: 'Regenerate roadmap',
   roadmap_title: 'Staged testing roadmap',
   roadmap_generating: 'Generating roadmap...',
   roadmap_objective: 'Objective',
