@@ -4,6 +4,23 @@ An open-source MVP for authorized HTTP traffic review with Burp Suite, a local F
 
 The tool sends selected HTTP messages to a local backend, redacts sensitive data before any cloud LLM call, and returns structured security findings or beginner-friendly learning notes.
 
+## AI pentest copilot (passive)
+
+Beyond per-request analysis, the tool acts as a beginner-friendly, passive AI pentest copilot that answers "where is the attack surface, what should I test first, and how do I verify each suspicious point by hand":
+
+- Recon analysis mode (`recon`) returns, per request, why a point is suspicious, a test priority, and step-by-step manual verification steps. It never generates or sends attack payloads.
+- An endpoint/parameter inventory is derived from all analyzed traffic (independent of findings), forming the structural attack surface.
+- Architecture fingerprinting classifies the system type (SPA / MPA / REST / GraphQL / CMS / microservice gateway), auth method, and tech stack from captured traffic.
+- An architecture-aware, staged testing roadmap is synthesized by the LLM from the system type, endpoint inventory, and findings summary.
+- The React dashboard is the default landing view: security-posture stats, a severity donut, the attack surface ("test first"), the architecture card, the staged roadmap, and a recent-findings timeline.
+- The Burp extension can auto-analyze in-scope proxy traffic (glob scope rules, 10/s rate limit) and one-click analyze the whole Site Map, then highlight Proxy History entries by severity once analysis completes.
+
+### Authorized use and accuracy
+
+- For authorized security testing only. You are responsible for staying within the agreed scope.
+- The tool is passive: it only analyzes already-captured traffic and never sends test payloads. Active verification is a reserved, not-yet-implemented capability (`POST /api/v1/recon/verify` returns disabled) that would require a separate design/review pass.
+- AI output may contain false positives and false negatives. Treat all conclusions as leads that require manual verification.
+
 ## Status
 
 This repository contains an MVP implementation. It is intended for local, single-user workflows and authorized security testing only.

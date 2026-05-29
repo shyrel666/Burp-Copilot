@@ -1,10 +1,11 @@
-import { AlertCircle, BookOpen, Globe, History, KeyRound, Layers, Play, ShieldCheck, X } from 'lucide-react';
+import { AlertCircle, BookOpen, Compass, Globe, History, KeyRound, Layers, LayoutDashboard, Play, ShieldCheck, X } from 'lucide-react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { analyzeTrafficStream, cancelTask, fetchHistory, fetchSettings, fetchTasks, saveProviderSettings, submitBatch } from './api/client';
+import { analyzeTrafficStream, cancelTask, fetchAnalysis, fetchHistory, fetchSettings, fetchTasks, saveProviderSettings, submitBatch, testProvider } from './api/client';
+import { Dashboard } from './Dashboard';
 import { LocaleContext, getMessages, useLocale, type Locale, type LocaleKeys } from './i18n';
 import type { AnalysisHistoryItem, AnalysisResponse, Finding, HistoryFilters, Mode, ProviderName, ProviderSettings, StreamStatus, TaskInfo } from './types';
 
-type View = 'analyze' | 'batch' | 'history' | 'settings';
+type View = 'dashboard' | 'analyze' | 'batch' | 'history' | 'settings';
 
 const emptySettings: ProviderSettings = {
   provider: 'openai',
@@ -60,8 +61,9 @@ function AppInner() {
     return err instanceof Error ? err.message : t('error_unexpected');
   }
 
-  const [view, setView] = useState<View>('analyze');
+  const [view, setView] = useState<View>('dashboard');
   const [mode, setMode] = useState<Mode>('analyze');
+  const [detailItem, setDetailItem] = useState<AnalysisHistoryItem | null>(null);
   const [targetUrl, setTargetUrl] = useState('');
   const [requestText, setRequestText] = useState('');
   const [responseText, setResponseText] = useState('');
@@ -162,11 +164,20 @@ function AppInner() {
   }
 
   const viewTitleMap: Record<View, LocaleKeys> = {
+    dashboard: 'view_dashboard',
     analyze: 'view_analyze',
     batch: 'view_batch',
     history: 'view_history',
     settings: 'view_settings',
   };
+
+  async function openAnalysisDetail(analysisId: string) {
+    try {
+      setDetailItem(await fetchAnalysis(analysisId));
+    } catch (exc) {
+      setError(localizedErrorMessage(exc));
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -178,6 +189,10 @@ function AppInner() {
             <span>{t('brand_sub')}</span>
           </div>
         </div>
+        <button aria-label={t('nav_dashboard')} className={view === 'dashboard' ? 'nav-active' : ''} onClick={() => setView('dashboard')}>
+          <LayoutDashboard aria-hidden="true" />
+          {t('nav_dashboard')}
+        </button>
         <button aria-label={t('nav_analyze')} className={view === 'analyze' ? 'nav-active' : ''} onClick={() => setView('analyze')}>
           <Play aria-hidden="true" />
           {t('nav_analyze')}
@@ -222,6 +237,10 @@ function AppInner() {
           </div>
         ) : null}
 
+        {view === 'dashboard' ? (
+          <Dashboard onSelectAnalysis={openAnalysisDetail} />
+        ) : null}
+
         {view === 'analyze' ? (
           <section className="tool-grid">
             <form className="analysis-form" onSubmit={submitAnalysis}>
@@ -234,6 +253,15 @@ function AppInner() {
                 >
                   <ShieldCheck aria-hidden="true" />
                   {t('mode_analyze')}
+                </button>
+                <button
+                  type="button"
+                  aria-label={t('mode_recon')}
+                  className={mode === 'recon' ? 'selected' : ''}
+                  onClick={() => setMode('recon')}
+                >
+                  <Compass aria-hidden="true" />
+                  {t('mode_recon')}
                 </button>
                 <button
                   type="button"
@@ -299,6 +327,10 @@ function AppInner() {
             loading={loading}
             onSubmit={submitSettings}
           />
+        ) : null}
+
+        {detailItem ? (
+          <HistoryDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
         ) : null}
       </main>
     </div>
@@ -393,7 +425,12 @@ function FindingCard({ finding }: { finding: Finding }) {
     <article className="finding-card">
       <div className="finding-title">
         <h3>{finding.title}</h3>
-        <span className={`severity severity-${finding.severity}`}>{finding.severity}</span>
+        <div className="finding-badges">
+          {typeof finding.priority === 'number' ? (
+            <span className="status-pill" title={t('finding_priority')}>P{finding.priority}</span>
+          ) : null}
+          <span className={`severity severity-${finding.severity}`}>{finding.severity}</span>
+        </div>
       </div>
       <p>{finding.evidence}</p>
       <dl>
@@ -408,6 +445,16 @@ function FindingCard({ finding }: { finding: Finding }) {
           </>
         ) : null}
       </dl>
+      {finding.verification_steps && finding.verification_steps.length > 0 ? (
+        <div className="verify-block">
+          <span className="verify-label">{t('finding_verify')}</span>
+          <ol className="verify-steps">
+            {finding.verification_steps.map((step, i) => (
+              <li key={i}>{step}</li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -577,6 +624,7 @@ function HistoryPanel({
 
 function HistoryDetailModal({ item, onClose }: { item: AnalysisHistoryItem; onClose: () => void }) {
   const { t } = useLocale();
+  const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -611,6 +659,21 @@ function HistoryDetailModal({ item, onClose }: { item: AnalysisHistoryItem; onCl
               ))}
             </div>
           )}
+          <button type="button" className="secondary-action" onClick={() => setShowRaw((v) => !v)} style={{ marginTop: '1rem' }}>
+            {showRaw ? t('detail_hide_raw') : t('detail_show_raw')}
+          </button>
+          {showRaw ? (
+            <div className="raw-traffic">
+              <span className="verify-label">{t('detail_raw_request')}</span>
+              <pre className="streaming-text">{item.request_text}</pre>
+              {item.response_text ? (
+                <>
+                  <span className="verify-label">{t('detail_raw_response')}</span>
+                  <pre className="streaming-text">{item.response_text}</pre>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -633,6 +696,21 @@ function SettingsPanel({
   onSubmit: (event: FormEvent) => void;
 }) {
   const { t } = useLocale();
+  const [testState, setTestState] = useState<{ ok: boolean; reason: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  async function runTest() {
+    setTesting(true);
+    setTestState(null);
+    try {
+      setTestState(await testProvider());
+    } catch (exc) {
+      setTestState({ ok: false, reason: exc instanceof Error ? exc.message : t('test_provider_fail') });
+    } finally {
+      setTesting(false);
+    }
+  }
+
   return (
     <form className="settings-form" onSubmit={onSubmit}>
       <label>
@@ -690,10 +768,21 @@ function SettingsPanel({
       {settings.provider === 'ollama' ? (
         <p className="muted">{t('ollama_note')}</p>
       ) : null}
-      <button className="primary-action" disabled={loading}>
-        <KeyRound aria-hidden="true" />
-        {t('btn_save_provider')}
-      </button>
+      <div className="settings-actions">
+        <button className="primary-action" disabled={loading}>
+          <KeyRound aria-hidden="true" />
+          {t('btn_save_provider')}
+        </button>
+        <button type="button" className="secondary-action" disabled={testing} onClick={runTest}>
+          {testing ? t('test_provider_testing') : t('btn_test_provider')}
+        </button>
+      </div>
+      {testState ? (
+        <div className={testState.ok ? 'key-state' : 'notice result-error'} role="status">
+          <strong>{testState.ok ? t('test_provider_ok') : t('test_provider_fail')}</strong>
+          <span className="muted"> {testState.reason}</span>
+        </div>
+      ) : null}
     </form>
   );
 }

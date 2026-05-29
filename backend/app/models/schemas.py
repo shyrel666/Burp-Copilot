@@ -14,6 +14,7 @@ class Source(str, Enum):
 class AnalysisMode(str, Enum):
     ANALYZE = "analyze"
     LEARN = "learn"
+    RECON = "recon"
 
 
 class Severity(str, Enum):
@@ -67,6 +68,8 @@ class Finding(BaseModel):
     attack_approach: str
     remediation: str
     owasp_category: str | None = None
+    verification_steps: list[str] = Field(default_factory=list)
+    priority: int | None = Field(default=None, ge=1, le=5)
 
 
 class AnalysisResponse(BaseModel):
@@ -90,6 +93,89 @@ class AnalysisHistoryItem(BaseModel):
     findings: list[Finding]
     redaction_applied: bool
     llm_status: Literal["ok", "repaired", "failed"]
+
+
+class SeverityDistribution(BaseModel):
+    critical: int = 0
+    high: int = 0
+    medium: int = 0
+    low: int = 0
+    info: int = 0
+
+
+class TopVulnerabilityType(BaseModel):
+    owasp_category: str
+    count: int
+
+
+class StatisticsResponse(BaseModel):
+    total_analyses: int
+    success_rate: float = Field(ge=0.0, le=1.0)
+    severity_distribution: SeverityDistribution
+    top_vulnerability_types: list[TopVulnerabilityType]
+
+
+class RecentFinding(BaseModel):
+    title: str
+    severity: Severity
+    confidence: float
+    owasp_category: str | None = None
+    analysis_id: str
+    target_url: str | None = None
+    created_at: str
+
+
+class AttackSurfaceEndpoint(BaseModel):
+    host: str | None = None
+    method: str
+    path_template: str
+    hit_count: int
+    param_names: list[str] = Field(default_factory=list)
+    has_auth_boundary: bool = False
+    finding_count: int = 0
+    max_severity: Severity | None = None
+    priority_score: float = 0.0
+
+
+class AttackSurfaceResponse(BaseModel):
+    total_endpoints: int
+    endpoints: list[AttackSurfaceEndpoint]
+
+
+class ArchitectureProfile(BaseModel):
+    host: str | None = None
+    system_types: list[str] = Field(default_factory=list)
+    auth_methods: list[str] = Field(default_factory=list)
+    tech_stack: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    endpoint_count: int = 0
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class RoadmapRequest(BaseModel):
+    host: str = Field(min_length=1)
+
+
+class RoadmapStep(BaseModel):
+    target: str
+    suspected_vuln: str
+    reason: str
+    verification_steps: list[str] = Field(default_factory=list)
+    priority: int | None = Field(default=None, ge=1, le=5)
+
+
+class RoadmapStage(BaseModel):
+    stage: str
+    objective: str = ""
+    steps: list[RoadmapStep] = Field(default_factory=list)
+
+
+class RoadmapResponse(BaseModel):
+    host: str | None = None
+    architecture: ArchitectureProfile
+    stages: list[RoadmapStage] = Field(default_factory=list)
+    llm_status: Literal["ok", "repaired", "failed"] = "ok"
+    notes: str | None = None
 
 
 class ProviderSettingsUpdate(BaseModel):

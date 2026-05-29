@@ -10,11 +10,15 @@ import burp.api.montoya.ui.contextmenu.ContextMenuItemsProvider;
 import burp.api.montoya.ui.contextmenu.MessageEditorHttpRequestResponse;
 import com.burpai.core.AnalysisRequestBuilder;
 import com.burpai.core.AnalysisResultFormatter;
+import com.burpai.core.AutoAnalysisEngine;
+import com.burpai.core.AutoAnalysisPanel;
+import com.burpai.core.AutoAnalysisProxyListener;
 import com.burpai.core.BackendClient;
 import com.burpai.core.BackendErrorMessage;
 import com.burpai.core.ExtensionSettings;
 import com.burpai.core.HttpMessageFilter;
 import com.burpai.core.PreparedHttpMessage;
+import com.burpai.core.ScopeRuleStore;
 import com.burpai.core.StreamCallback;
 
 import javax.swing.BorderFactory;
@@ -43,6 +47,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class Extension implements BurpExtension, ContextMenuItemsProvider {
     private MontoyaApi api;
     private ExtensionSettings settings;
+    private AutoAnalysisEngine autoEngine;
     private JTextField backendUrlField;
     private JTextField tokenField;
     private JTextArea resultArea;
@@ -57,9 +62,24 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
     public void initialize(MontoyaApi api) {
         this.api = api;
         this.settings = new ExtensionSettings(api);
+        ScopeRuleStore scopeStore = new ScopeRuleStore(new ScopeRuleStore.StringStore() {
+            @Override
+            public String getString(String key) {
+                return api.persistence().extensionData().getString(key);
+            }
+
+            @Override
+            public void setString(String key, String value) {
+                api.persistence().extensionData().setString(key, value);
+            }
+        });
+        this.autoEngine = new AutoAnalysisEngine(api, scopeStore, settings);
         api.extension().setName("AI HTTP 分析器");
         api.userInterface().registerSuiteTab("AI Analyzer", createPanel());
         api.userInterface().registerContextMenuItemsProvider(this);
+        api.proxy().registerResponseHandler(new AutoAnalysisProxyListener(autoEngine));
+        api.extension().registerUnloadingHandler(autoEngine::stop);
+        autoEngine.start();
         api.logging().logToOutput("AI HTTP 分析器已加载。");
     }
 
@@ -103,6 +123,8 @@ public class Extension implements BurpExtension, ContextMenuItemsProvider {
         buttonRow.add(healthButton, BorderLayout.EAST);
         buttonRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, healthButton.getPreferredSize().height + 4));
         settingsPanel.add(buttonRow);
+        settingsPanel.add(Box.createVerticalStrut(8));
+        settingsPanel.add(new AutoAnalysisPanel(api, autoEngine).getComponent());
 
         resultArea = new JTextArea();
         resultArea.setEditable(false);

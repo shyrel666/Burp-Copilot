@@ -33,6 +33,18 @@ public class BackendClient {
         return post("/api/v1/analyze", json);
     }
 
+    public String submitBatch(String json) throws IOException {
+        return post("/api/v1/batch/submit", json);
+    }
+
+    public String getTask(String taskId) throws IOException {
+        return get("/api/v1/batch/tasks/" + taskId);
+    }
+
+    public String getAnalysis(String analysisId) throws IOException {
+        return get("/api/v1/analysis/" + analysisId);
+    }
+
     public void analyzeStream(String json, StreamCallback callback) throws IOException {
         HttpURLConnection connection = open("/api/v1/analyze/stream");
         try {

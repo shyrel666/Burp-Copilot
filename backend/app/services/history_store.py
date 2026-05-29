@@ -15,6 +15,7 @@ from app.models.schemas import (
     Severity,
     Source,
 )
+from app.services.endpoint_inventory import ExtractedEndpoint, extract_endpoint
 
 
 class HistoryStore:
@@ -35,6 +36,8 @@ class HistoryStore:
         metadata: AnalysisMetadata,
         analysis: AnalysisResponse,
     ) -> None:
+        created_at = datetime.now(timezone.utc).isoformat()
+        endpoint = extract_endpoint(request_text, target_url)
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
@@ -47,7 +50,7 @@ class HistoryStore:
                 """,
                 (
                     analysis.analysis_id,
-                    datetime.now(timezone.utc).isoformat(),
+                    created_at,
                     source.value,
                     mode.value,
                     target_url,
@@ -60,6 +63,36 @@ class HistoryStore:
                     analysis.llm_status,
                 ),
             )
+            if endpoint is not None:
+                self._insert_endpoint(conn, analysis.analysis_id, created_at, endpoint)
+
+    @staticmethod
+    def _insert_endpoint(
+        conn: sqlite3.Connection,
+        analysis_id: str,
+        created_at: str,
+        endpoint: ExtractedEndpoint,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO endpoints (
+                analysis_id, created_at, host, method, path_template,
+                param_names, content_type, has_cookie, has_auth_header
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                analysis_id,
+                created_at,
+                endpoint.host,
+                endpoint.method,
+                endpoint.path_template,
+                json.dumps(endpoint.param_names),
+                endpoint.content_type,
+                int(endpoint.has_cookie),
+                int(endpoint.has_auth_header),
+            ),
+        )
 
     def create_analysis_id(self) -> str:
         return str(uuid.uuid4())
@@ -110,6 +143,31 @@ class HistoryStore:
             )
         ]
 
+    def list_endpoints(self, *, host: str | None = None) -> list[dict]:
+        query = "SELECT * FROM endpoints WHERE 1=1"
+        params: list = []
+        if host:
+            query += " AND host = ?"
+            params.append(host.lower())
+        query += " ORDER BY created_at ASC"
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(query, params).fetchall()
+        return [
+            {
+                "analysis_id": row["analysis_id"],
+                "created_at": row["created_at"],
+                "host": row["host"],
+                "method": row["method"],
+                "path_template": row["path_template"],
+                "param_names": json.loads(row["param_names"]),
+                "content_type": row["content_type"],
+                "has_cookie": bool(row["has_cookie"]),
+                "has_auth_header": bool(row["has_auth_header"]),
+            }
+            for row in rows
+        ]
+
     def get(self, analysis_id: str) -> AnalysisHistoryItem | None:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -136,6 +194,21 @@ class HistoryStore:
                     findings_json TEXT NOT NULL,
                     redaction_applied INTEGER NOT NULL,
                     llm_status TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS endpoints (
+                    analysis_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    host TEXT,
+                    method TEXT NOT NULL,
+                    path_template TEXT NOT NULL,
+                    param_names TEXT NOT NULL,
+                    content_type TEXT,
+                    has_cookie INTEGER NOT NULL DEFAULT 0,
+                    has_auth_header INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )

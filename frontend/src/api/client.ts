@@ -1,4 +1,18 @@
-import type { AnalysisHistoryItem, AnalysisResponse, HistoryFilters, Mode, ProviderName, ProviderSettings, StreamStatus, TaskInfo } from '../types';
+import type {
+  AnalysisHistoryItem,
+  AnalysisResponse,
+  ArchitectureProfile,
+  AttackSurfaceResponse,
+  HistoryFilters,
+  Mode,
+  ProviderName,
+  ProviderSettings,
+  RecentFinding,
+  RoadmapResponse,
+  StatisticsResponse,
+  StreamStatus,
+  TaskInfo,
+} from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const BACKEND_TOKEN = import.meta.env.VITE_BACKEND_TOKEN ?? '';
@@ -64,6 +78,43 @@ export function fetchHistory(filters?: HistoryFilters): Promise<AnalysisHistoryI
   if (filters?.offset) params.set('offset', String(filters.offset));
   const qs = params.toString();
   return request<AnalysisHistoryItem[]>(`/api/v1/history${qs ? `?${qs}` : ''}`);
+}
+
+export function fetchAnalysis(analysisId: string): Promise<AnalysisHistoryItem> {
+  return request<AnalysisHistoryItem>(`/api/v1/analysis/${analysisId}`);
+}
+
+export function fetchStatistics(since?: string): Promise<StatisticsResponse> {
+  const qs = since ? `?since=${encodeURIComponent(since)}` : '';
+  return request<StatisticsResponse>(`/api/v1/statistics${qs}`);
+}
+
+export function fetchRecentFindings(limit = 20): Promise<RecentFinding[]> {
+  return request<RecentFinding[]>(`/api/v1/statistics/recent-findings?limit=${limit}`);
+}
+
+export function fetchAttackSurface(host?: string, limit = 50): Promise<AttackSurfaceResponse> {
+  const params = new URLSearchParams();
+  if (host) params.set('host', host);
+  params.set('limit', String(limit));
+  return request<AttackSurfaceResponse>(`/api/v1/statistics/attack-surface?${params.toString()}`);
+}
+
+export function fetchArchitecture(host: string): Promise<ArchitectureProfile> {
+  return request<ArchitectureProfile>(`/api/v1/recon/architecture?host=${encodeURIComponent(host)}`);
+}
+
+export function fetchRoadmap(host: string): Promise<RoadmapResponse> {
+  return request<RoadmapResponse>('/api/v1/recon/roadmap', {
+    method: 'POST',
+    body: JSON.stringify({ host }),
+  });
+}
+
+export function testProvider(): Promise<{ ok: boolean; reason: string }> {
+  return request<{ ok: boolean; reason: string }>('/api/v1/settings/test-provider', {
+    method: 'POST',
+  });
 }
 
 export function fetchSettings(): Promise<ProviderSettings> {

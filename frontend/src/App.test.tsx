@@ -44,6 +44,20 @@ describe('dashboard', () => {
         if (url.includes('/api/v1/history')) {
           return jsonResponse([]);
         }
+        if (url.includes('/api/v1/statistics/recent-findings')) {
+          return jsonResponse([]);
+        }
+        if (url.includes('/api/v1/statistics/attack-surface')) {
+          return jsonResponse({ total_endpoints: 0, endpoints: [] });
+        }
+        if (url.includes('/api/v1/statistics')) {
+          return jsonResponse({
+            total_analyses: 0,
+            success_rate: 0,
+            severity_distribution: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+            top_vulnerability_types: [],
+          });
+        }
         if (url.endsWith('/api/v1/settings')) {
           return jsonResponse({
             provider: 'openai',
@@ -88,6 +102,7 @@ describe('dashboard', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(screen.getByRole('button', { name: /^分析$/ }));
     await user.type(screen.getByLabelText(/请求/), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
     await user.click(document.querySelector('.primary-action')!);
 
@@ -125,6 +140,9 @@ describe('dashboard', () => {
       }
       if (url.endsWith('/api/v1/history')) {
         return jsonResponse([]);
+      }
+      if (url.includes('/api/v1/statistics')) {
+        return jsonResponse({ total_analyses: 0, success_rate: 0, severity_distribution: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, top_vulnerability_types: [] });
       }
       if (url.endsWith('/api/v1/settings') && !init?.method) {
         return jsonResponse({
@@ -183,11 +201,17 @@ describe('dashboard', () => {
         if (url.endsWith('/api/v1/history')) {
           return jsonResponse([]);
         }
-        throw new Error(`Unhandled request: ${url}`);
+        if (url.includes('/api/v1/statistics/recent-findings')) return jsonResponse([]);
+        if (url.includes('/api/v1/statistics/attack-surface')) return jsonResponse({ total_endpoints: 0, endpoints: [] });
+        if (url.includes('/api/v1/statistics')) {
+          return jsonResponse({ total_analyses: 0, success_rate: 0, severity_distribution: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, top_vulnerability_types: [] });
+        }
+        return jsonResponse([]);
       }),
     );
     render(<App />);
 
+    await user.click(screen.getByRole('button', { name: /^分析$/ }));
     await user.type(
       screen.getByLabelText(/请求/),
       `POST /login HTTP/1.1\r\nHost: example.test\r\nAuthorization: Bearer ${secret}\r\n\r\npassword=${secret}`,
@@ -225,6 +249,50 @@ describe('dashboard', () => {
     expect(await screen.findByText('队列中没有任务。')).toBeInTheDocument();
   });
 
+  test('dashboard is the default landing view and shows the compliance banner', async () => {
+    render(<App />);
+    expect(await screen.findByText(/仅用于已授权的安全测试/)).toBeInTheDocument();
+    expect(screen.getByText(/还没有分析数据/)).toBeInTheDocument();
+  });
+
+  test('dashboard renders stat cards and attack surface when data exists', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/v1/statistics/recent-findings')) {
+          return jsonResponse([
+            { title: '疑似越权', severity: 'high', confidence: 0.6, owasp_category: 'A01', analysis_id: 'a1', target_url: 'https://x.test/api/users/1', created_at: '2026-05-29T10:00:00+00:00' },
+          ]);
+        }
+        if (url.includes('/api/v1/statistics/attack-surface')) {
+          return jsonResponse({
+            total_endpoints: 1,
+            endpoints: [
+              { host: 'x.test', method: 'POST', path_template: '/admin', hit_count: 1, param_names: ['x'], has_auth_boundary: true, finding_count: 1, max_severity: 'critical', priority_score: 7.3 },
+            ],
+          });
+        }
+        if (url.includes('/api/v1/statistics')) {
+          return jsonResponse({
+            total_analyses: 5,
+            success_rate: 0.8,
+            severity_distribution: { critical: 1, high: 2, medium: 0, low: 1, info: 1 },
+            top_vulnerability_types: [{ owasp_category: 'A01', count: 3 }],
+          });
+        }
+        if (url.includes('/api/v1/history')) return jsonResponse([]);
+        return jsonResponse([]);
+      }),
+    );
+    render(<App />);
+
+    expect(await screen.findByText('80%')).toBeInTheDocument();
+    expect(screen.getByText('x.test/admin')).toBeInTheDocument();
+    expect(screen.getByText('疑似越权')).toBeInTheDocument();
+    expect(screen.getAllByText('5').length).toBeGreaterThanOrEqual(1);
+  });
+
   test('history panel shows filter controls', async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -249,11 +317,17 @@ describe('dashboard', () => {
         if (url.endsWith('/api/v1/history')) {
           return jsonResponse([]);
         }
-        throw new Error(`Unhandled request: ${url}`);
+        if (url.includes('/api/v1/statistics/recent-findings')) return jsonResponse([]);
+        if (url.includes('/api/v1/statistics/attack-surface')) return jsonResponse({ total_endpoints: 0, endpoints: [] });
+        if (url.includes('/api/v1/statistics')) {
+          return jsonResponse({ total_analyses: 0, success_rate: 0, severity_distribution: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, top_vulnerability_types: [] });
+        }
+        return jsonResponse([]);
       }),
     );
     render(<App />);
 
+    await user.click(screen.getByRole('button', { name: /^分析$/ }));
     await user.type(screen.getByLabelText(/请求/), 'GET / HTTP/1.1\r\nHost: example.test\r\n\r\n');
     await user.click(document.querySelector('.primary-action')!);
 

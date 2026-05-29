@@ -31,6 +31,11 @@ RESULT_SCHEMA = {
                     "attack_approach": {"type": "string"},
                     "remediation": {"type": "string"},
                     "owasp_category": {"type": ["string", "null"]},
+                    "verification_steps": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "priority": {"type": ["integer", "null"], "minimum": 1, "maximum": 5},
                 },
                 "additionalProperties": True,
             },

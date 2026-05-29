@@ -92,6 +92,69 @@ export const en: Record<LocaleKeys, string> = {
   error_batch_failed: 'Batch submit failed',
   error_cancel_failed: 'Cancel failed',
 
+  // Dashboard
+  nav_dashboard: 'Overview',
+  view_dashboard: 'Security posture overview',
+  mode_recon: 'Recon',
+  compliance_banner: 'For authorized security testing only. AI conclusions require manual verification and may contain false positives or negatives.',
+  dashboard_total: 'Total analyses',
+  dashboard_success_rate: 'Success rate',
+  dashboard_top_vuln: 'Top vulnerability type',
+  dashboard_severity_chart: 'Severity distribution',
+  dashboard_recent: 'Recent findings',
+  dashboard_attack_surface: 'Attack surface · suggested test order',
+  dashboard_empty_title: 'No analysis data yet',
+  dashboard_empty_hint: 'Enable auto-analysis in Burp, or submit one request on the Analyze page, and the overview will appear.',
+  dashboard_no_recent: 'No findings yet.',
+  dashboard_none: 'None',
+  time_now: 'now',
+  time_minute_suffix: 'm ago',
+  time_hour_suffix: 'h ago',
+  time_day_suffix: 'd ago',
+
+  // Attack surface
+  surface_priority: 'Priority',
+  surface_findings: 'findings',
+  surface_auth: 'auth',
+  surface_no_auth: 'no auth',
+  surface_params: 'params',
+  surface_no_endpoints: 'No endpoint data yet.',
+
+  // Architecture & roadmap
+  arch_title: 'Architecture fingerprint',
+  arch_select_host: 'Select target',
+  arch_system_types: 'System type',
+  arch_auth: 'Auth method',
+  arch_tech: 'Tech stack',
+  arch_confidence: 'Confidence',
+  arch_unknown: 'Unknown',
+  arch_generate_roadmap: 'Generate testing roadmap',
+  roadmap_title: 'Staged testing roadmap',
+  roadmap_generating: 'Generating roadmap...',
+  roadmap_objective: 'Objective',
+  roadmap_target: 'Target',
+  roadmap_suspected: 'Suspected vuln',
+  roadmap_reason: 'Reason',
+  roadmap_priority: 'Priority',
+  roadmap_empty: 'Select a target host and generate a roadmap.',
+  roadmap_failed: 'Roadmap generation failed. Check provider settings and retry.',
+
+  // Finding extras
+  finding_verify: 'Manual verification steps',
+  finding_priority: 'Test priority',
+
+  // History detail raw
+  detail_show_raw: 'Show redacted traffic',
+  detail_hide_raw: 'Hide traffic',
+  detail_raw_request: 'Request (redacted)',
+  detail_raw_response: 'Response (redacted)',
+
+  // Test provider
+  btn_test_provider: 'Test connection',
+  test_provider_ok: 'Connection OK',
+  test_provider_fail: 'Connection failed',
+  test_provider_testing: 'Testing...',
+
   // Language
   lang_switch: '中/EN',
   lang_switch_label: 'Switch language',

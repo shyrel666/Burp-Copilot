@@ -34,7 +34,8 @@
       "AnalysisMode": {
         "enum": [
           "analyze",
-          "learn"
+          "learn",
+          "recon"
         ],
         "title": "AnalysisMode",
         "type": "string"
@@ -84,6 +85,150 @@
           "request_text"
         ],
         "title": "AnalyzeRequest",
+        "type": "object"
+      },
+      "ArchitectureProfile": {
+        "properties": {
+          "auth_methods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Auth Methods",
+            "type": "array"
+          },
+          "confidence": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "endpoint_count": {
+            "default": 0,
+            "title": "Endpoint Count",
+            "type": "integer"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "system_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "System Types",
+            "type": "array"
+          },
+          "tech_stack": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tech Stack",
+            "type": "array"
+          }
+        },
+        "title": "ArchitectureProfile",
+        "type": "object"
+      },
+      "AttackSurfaceEndpoint": {
+        "properties": {
+          "finding_count": {
+            "default": 0,
+            "title": "Finding Count",
+            "type": "integer"
+          },
+          "has_auth_boundary": {
+            "default": false,
+            "title": "Has Auth Boundary",
+            "type": "boolean"
+          },
+          "hit_count": {
+            "title": "Hit Count",
+            "type": "integer"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "max_severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Severity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "param_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Param Names",
+            "type": "array"
+          },
+          "path_template": {
+            "title": "Path Template",
+            "type": "string"
+          },
+          "priority_score": {
+            "default": 0.0,
+            "title": "Priority Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "method",
+          "path_template",
+          "hit_count"
+        ],
+        "title": "AttackSurfaceEndpoint",
+        "type": "object"
+      },
+      "AttackSurfaceResponse": {
+        "properties": {
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/AttackSurfaceEndpoint"
+            },
+            "title": "Endpoints",
+            "type": "array"
+          },
+          "total_endpoints": {
+            "title": "Total Endpoints",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_endpoints",
+          "endpoints"
+        ],
+        "title": "AttackSurfaceResponse",
         "type": "object"
       },
       "BatchItem": {
@@ -202,6 +347,7 @@
         "enum": [
           "openai",
           "openai-compatible",
+          "deepseek",
           "ollama"
         ],
         "title": "ProviderName",
@@ -291,6 +437,235 @@
         "title": "ProviderSettingsUpdate",
         "type": "object"
       },
+      "RecentFinding": {
+        "properties": {
+          "analysis_id": {
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "owasp_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owasp Category"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "target_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Url"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "severity",
+          "confidence",
+          "analysis_id",
+          "created_at"
+        ],
+        "title": "RecentFinding",
+        "type": "object"
+      },
+      "RoadmapRequest": {
+        "properties": {
+          "host": {
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host"
+        ],
+        "title": "RoadmapRequest",
+        "type": "object"
+      },
+      "RoadmapResponse": {
+        "properties": {
+          "architecture": {
+            "$ref": "#/components/schemas/ArchitectureProfile"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "llm_status": {
+            "default": "ok",
+            "enum": [
+              "ok",
+              "repaired",
+              "failed"
+            ],
+            "title": "Llm Status",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/RoadmapStage"
+            },
+            "title": "Stages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "architecture"
+        ],
+        "title": "RoadmapResponse",
+        "type": "object"
+      },
+      "RoadmapStage": {
+        "properties": {
+          "objective": {
+            "default": "",
+            "title": "Objective",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RoadmapStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "stage"
+        ],
+        "title": "RoadmapStage",
+        "type": "object"
+      },
+      "RoadmapStep": {
+        "properties": {
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "suspected_vuln": {
+            "title": "Suspected Vuln",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "verification_steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "target",
+          "suspected_vuln",
+          "reason"
+        ],
+        "title": "RoadmapStep",
+        "type": "object"
+      },
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "SeverityDistribution": {
+        "properties": {
+          "critical": {
+            "default": 0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "title": "High",
+            "type": "integer"
+          },
+          "info": {
+            "default": 0,
+            "title": "Info",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "title": "Medium",
+            "type": "integer"
+          }
+        },
+        "title": "SeverityDistribution",
+        "type": "object"
+      },
       "Source": {
         "enum": [
           "burp",
@@ -298,6 +673,38 @@
         ],
         "title": "Source",
         "type": "string"
+      },
+      "StatisticsResponse": {
+        "properties": {
+          "severity_distribution": {
+            "$ref": "#/components/schemas/SeverityDistribution"
+          },
+          "success_rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Success Rate",
+            "type": "number"
+          },
+          "top_vulnerability_types": {
+            "items": {
+              "$ref": "#/components/schemas/TopVulnerabilityType"
+            },
+            "title": "Top Vulnerability Types",
+            "type": "array"
+          },
+          "total_analyses": {
+            "title": "Total Analyses",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_analyses",
+          "success_rate",
+          "severity_distribution",
+          "top_vulnerability_types"
+        ],
+        "title": "StatisticsResponse",
+        "type": "object"
       },
       "TaskInfo": {
         "properties": {
@@ -377,6 +784,24 @@
         ],
         "title": "TaskStatus",
         "type": "string"
+      },
+      "TopVulnerabilityType": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "owasp_category": {
+            "title": "Owasp Category",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owasp_category",
+          "count"
+        ],
+        "title": "TopVulnerabilityType",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -986,6 +1411,166 @@
         "summary": "List History"
       }
     },
+    "/api/v1/recon/architecture": {
+      "get": {
+        "operationId": "get_architecture_api_v1_recon_architecture_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Host",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-backend-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Backend-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchitectureProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Architecture"
+      }
+    },
+    "/api/v1/recon/roadmap": {
+      "post": {
+        "operationId": "build_roadmap_api_v1_recon_roadmap_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-backend-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Backend-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoadmapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadmapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Roadmap"
+      }
+    },
+    "/api/v1/recon/verify": {
+      "post": {
+        "operationId": "verify_finding_api_v1_recon_verify_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-backend-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Backend-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verify Finding Api V1 Recon Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Finding"
+      }
+    },
     "/api/v1/settings": {
       "get": {
         "operationId": "get_settings_api_v1_settings_get",
@@ -1143,6 +1728,204 @@
           }
         },
         "summary": "Test Provider"
+      }
+    },
+    "/api/v1/statistics": {
+      "get": {
+        "operationId": "get_statistics_api_v1_statistics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-backend-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Backend-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatisticsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Statistics"
+      }
+    },
+    "/api/v1/statistics/attack-surface": {
+      "get": {
+        "operationId": "get_attack_surface_api_v1_statistics_attack_surface_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "host",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Host"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-backend-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Backend-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttackSurfaceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Attack Surface"
+      }
+    },
+    "/api/v1/statistics/recent-findings": {
+      "get": {
+        "operationId": "get_recent_findings_api_v1_statistics_recent_findings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-backend-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Backend-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecentFinding"
+                  },
+                  "title": "Response Get Recent Findings Api V1 Statistics Recent Findings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recent Findings"
       }
     }
   }

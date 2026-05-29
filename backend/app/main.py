@@ -16,16 +16,25 @@ from app.llm.openai_provider import OpenAIProvider
 from app.llm.provider_registry import ProviderConfig, build_provider
 from app.models.schemas import (
     AnalyzeRequest,
+    ArchitectureProfile,
+    AttackSurfaceResponse,
     BatchSubmitRequest,
     BatchSubmitResponse,
     ProviderSettingsResponse,
     ProviderSettingsUpdate,
+    RecentFinding,
+    RoadmapRequest,
+    RoadmapResponse,
+    StatisticsResponse,
     TaskInfo,
     TaskStatus,
 )
 from app.services.analysis_service import AnalysisService
+from app.services.fingerprint_service import FingerprintService
 from app.services.history_store import HistoryStore
+from app.services.roadmap_service import RoadmapService
 from app.services.settings_store import SettingsStore
+from app.services.statistics_service import StatisticsService
 from app.services.task_store import TaskStore
 from app.services.task_worker import TaskWorker
 
@@ -35,6 +44,8 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
     settings = SettingsStore(resolved_data_dir)
     history = HistoryStore(resolved_data_dir)
     task_store = TaskStore(resolved_data_dir)
+    statistics = StatisticsService(history)
+    fingerprints = FingerprintService(history)
 
     _provider_cache: dict = {}
 
@@ -127,6 +138,64 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
             raise HTTPException(status_code=404, detail="analysis not found")
         return item
 
+    @app.get("/api/v1/statistics", response_model=StatisticsResponse, dependencies=[require_token])
+    async def get_statistics(since: str | None = Query(default=None)):
+        _validate_iso8601(since)
+        return statistics.get_statistics(since=since)
+
+    @app.get(
+        "/api/v1/statistics/recent-findings",
+        response_model=list[RecentFinding],
+        dependencies=[require_token],
+    )
+    async def get_recent_findings(limit: int = Query(default=20, ge=1, le=100)):
+        return statistics.get_recent_findings(limit=limit)
+
+    @app.get(
+        "/api/v1/statistics/attack-surface",
+        response_model=AttackSurfaceResponse,
+        dependencies=[require_token],
+    )
+    async def get_attack_surface(
+        host: str | None = Query(default=None),
+        limit: int = Query(default=50, ge=1, le=200),
+    ):
+        return statistics.get_attack_surface(host=host, limit=limit)
+
+    @app.get(
+        "/api/v1/recon/architecture",
+        response_model=ArchitectureProfile,
+        dependencies=[require_token],
+    )
+    async def get_architecture(host: str = Query(..., min_length=1)):
+        return fingerprints.fingerprint(host)
+
+    @app.post(
+        "/api/v1/recon/roadmap",
+        response_model=RoadmapResponse,
+        dependencies=[require_token],
+    )
+    async def build_roadmap(request: RoadmapRequest):
+        try:
+            provider = _resolve_provider()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        service = RoadmapService(history, fingerprints, statistics, provider)
+        return await service.build(request.host)
+
+    # --- Active verification (reserved seam, intentionally NOT implemented) ---
+    # The tool is passive-only: it never crafts or sends attack payloads. This
+    # endpoint reserves the contract for a future, separately-reviewed active
+    # verification capability that MUST add scope enforcement, rate limiting,
+    # an audit trail, and explicit per-target confirmation before sending any
+    # request. Until then it always reports "disabled".
+    @app.post("/api/v1/recon/verify", dependencies=[require_token])
+    async def verify_finding() -> dict[str, object]:
+        return {
+            "enabled": False,
+            "reason": "主动验证未启用：本工具当前为被动分析，不发送任何测试载荷。该能力需单独设计评审后开启。",
+        }
+
     @app.get("/api/v1/settings", response_model=ProviderSettingsResponse, dependencies=[require_token])
     async def get_settings():
         return settings.get_public_settings()
@@ -197,6 +266,20 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
         return {"task_id": task_id, "status": "cancelled"}
 
     return app
+
+
+def _validate_iso8601(value: str | None) -> None:
+    if value is None:
+        return
+    from datetime import datetime
+
+    candidate = value.replace("Z", "+00:00")
+    try:
+        datetime.fromisoformat(candidate)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="invalid 'since': must be an ISO 8601 timestamp"
+        ) from exc
 
 
 async def _encode_sse(events):
