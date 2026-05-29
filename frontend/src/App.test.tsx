@@ -32,6 +32,17 @@ const failedAnalysisResponse = {
 describe('dashboard', () => {
   beforeEach(() => {
     vi.stubGlobal(
+      'EventSource',
+      class MockEventSource {
+        onmessage: ((event: MessageEvent) => void) | null = null;
+        onerror: ((event: Event) => void) | null = null;
+        close = vi.fn();
+        addEventListener = vi.fn();
+        removeEventListener = vi.fn();
+        constructor(_url: string) {}
+      },
+    );
+    vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -43,6 +54,18 @@ describe('dashboard', () => {
         }
         if (url.includes('/api/v1/history')) {
           return jsonResponse([]);
+        }
+        if (url.includes('/api/v1/dashboard')) {
+          return jsonResponse({
+            statistics: {
+              total_analyses: 0,
+              success_rate: 0,
+              severity_distribution: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
+              top_vulnerability_types: [],
+            },
+            recent_findings: [],
+            attack_surface: { total_endpoints: 0, endpoints: [] },
+          });
         }
         if (url.includes('/api/v1/statistics/recent-findings')) {
           return jsonResponse([]);
@@ -260,6 +283,25 @@ describe('dashboard', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
+        if (url.includes('/api/v1/dashboard')) {
+          return jsonResponse({
+            statistics: {
+              total_analyses: 5,
+              success_rate: 0.8,
+              severity_distribution: { critical: 1, high: 2, medium: 0, low: 1, info: 1 },
+              top_vulnerability_types: [{ owasp_category: 'A01', count: 3 }],
+            },
+            recent_findings: [
+              { title: '疑似越权', severity: 'high', confidence: 0.6, owasp_category: 'A01', analysis_id: 'a1', target_url: 'https://x.test/api/users/1', created_at: '2026-05-29T10:00:00+00:00' },
+            ],
+            attack_surface: {
+              total_endpoints: 1,
+              endpoints: [
+                { host: 'x.test', method: 'POST', path_template: '/admin', hit_count: 1, param_names: ['x'], has_auth_boundary: true, finding_count: 1, max_severity: 'critical', priority_score: 7.3 },
+              ],
+            },
+          });
+        }
         if (url.includes('/api/v1/statistics/recent-findings')) {
           return jsonResponse([
             { title: '疑似越权', severity: 'high', confidence: 0.6, owasp_category: 'A01', analysis_id: 'a1', target_url: 'https://x.test/api/users/1', created_at: '2026-05-29T10:00:00+00:00' },

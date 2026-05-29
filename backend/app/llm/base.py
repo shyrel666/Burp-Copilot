@@ -27,3 +27,7 @@ class BaseLLMProvider(ABC):
     @abstractmethod
     async def health_check(self) -> HealthCheckResult:
         raise NotImplementedError
+
+    async def aclose(self) -> None:
+        """Release resources held by the provider. Override in subclasses."""
+        pass

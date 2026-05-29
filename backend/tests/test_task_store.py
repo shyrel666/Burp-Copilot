@@ -1,9 +1,10 @@
+from app.core.database import Database
 from app.models.schemas import AnalysisMode, Source, TaskStatus
 from app.services.task_store import TaskStore
 
 
 def test_enqueue_creates_queued_task(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     task = store.enqueue(
         source=Source.DASHBOARD,
         mode=AnalysisMode.ANALYZE,
@@ -19,7 +20,7 @@ def test_enqueue_creates_queued_task(tmp_path):
 
 
 def test_fetch_queued_returns_tasks_in_order(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req1",
@@ -37,7 +38,7 @@ def test_fetch_queued_returns_tasks_in_order(tmp_path):
 
 
 def test_mark_running_transitions_state(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     task = store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req",
@@ -49,7 +50,7 @@ def test_mark_running_transitions_state(tmp_path):
 
 
 def test_mark_done_transitions_state(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     task = store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req",
@@ -63,7 +64,7 @@ def test_mark_done_transitions_state(tmp_path):
 
 
 def test_mark_failed_transitions_state(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     task = store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req",
@@ -77,7 +78,7 @@ def test_mark_failed_transitions_state(tmp_path):
 
 
 def test_cancel_queued_task(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     task = store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req",
@@ -90,7 +91,7 @@ def test_cancel_queued_task(tmp_path):
 
 
 def test_cancel_running_task_sets_flag(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     task = store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req",
@@ -105,7 +106,7 @@ def test_cancel_running_task_sets_flag(tmp_path):
 
 
 def test_cancel_done_task_fails(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     task = store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req",
@@ -118,7 +119,7 @@ def test_cancel_done_task_fails(tmp_path):
 
 
 def test_recover_running_tasks(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     task1 = store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req1",
@@ -139,7 +140,7 @@ def test_recover_running_tasks(tmp_path):
 
 
 def test_list_tasks_with_status_filter(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     t1 = store.enqueue(
         source=Source.DASHBOARD, mode=AnalysisMode.ANALYZE,
         target_url=None, redacted_request="req1",
@@ -162,5 +163,5 @@ def test_list_tasks_with_status_filter(tmp_path):
 
 
 def test_get_nonexistent_returns_none(tmp_path):
-    store = TaskStore(tmp_path)
+    store = TaskStore(Database(tmp_path))
     assert store.get("nonexistent") is None

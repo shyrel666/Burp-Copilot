@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
@@ -9,6 +10,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
+from app.core.database import Database
 from app.core.input_guard import guard_payload
 from app.core.redaction import redact_pair, redact_url
 from app.llm.fake_provider import FakeLLMProvider
@@ -41,9 +43,10 @@ from app.services.task_worker import TaskWorker
 
 def create_app(data_dir: str | Path | None = None, provider_mode: str | None = None) -> FastAPI:
     resolved_data_dir = Path(data_dir or os.getenv("DATA_DIR", "./data"))
+    db = Database(resolved_data_dir)
     settings = SettingsStore(resolved_data_dir)
-    history = HistoryStore(resolved_data_dir)
-    task_store = TaskStore(resolved_data_dir)
+    history = HistoryStore(db)
+    task_store = TaskStore(db)
     statistics = StatisticsService(history)
     fingerprints = FingerprintService(history)
 
@@ -54,6 +57,15 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
         key = settings.get_api_key()
         config = (public.provider.value, public.model, key, public.base_url, provider_mode)
         if _provider_cache.get("config") != config:
+            # Schedule cleanup of the previous provider's HTTP client. We're in a
+            # sync function called from async request/worker paths, so a running
+            # loop normally exists; if not, skip (nothing to clean up yet).
+            old = _provider_cache.get("instance")
+            if old is not None and hasattr(old, "aclose"):
+                try:
+                    asyncio.get_running_loop().create_task(old.aclose())
+                except RuntimeError:
+                    pass
             _provider_cache["config"] = config
             _provider_cache["instance"] = _build_provider(settings, provider_mode)
         return _provider_cache["instance"]
@@ -71,6 +83,10 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
         await worker.start()
         yield
         await worker.stop()
+        provider = _provider_cache.get("instance")
+        if provider is not None and hasattr(provider, "aclose"):
+            await provider.aclose()
+        db.close()
 
     app = FastAPI(title="Burp Copilot", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
@@ -137,6 +153,19 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
         if item is None:
             raise HTTPException(status_code=404, detail="analysis not found")
         return item
+
+    @app.get("/api/v1/dashboard", dependencies=[require_token])
+    async def get_dashboard(
+        since: str | None = Query(default=None),
+        findings_limit: int = Query(default=20, ge=1, le=100),
+        surface_limit: int = Query(default=50, ge=1, le=200),
+    ):
+        _validate_iso8601(since)
+        return {
+            "statistics": statistics.get_statistics(since=since),
+            "recent_findings": statistics.get_recent_findings(limit=findings_limit),
+            "attack_surface": statistics.get_attack_surface(limit=surface_limit),
+        }
 
     @app.get("/api/v1/statistics", response_model=StatisticsResponse, dependencies=[require_token])
     async def get_statistics(since: str | None = Query(default=None)):
@@ -239,12 +268,26 @@ def create_app(data_dir: str | Path | None = None, provider_mode: str | None = N
                 metadata_json=guarded.metadata.model_dump_json(),
             )
             tasks.append(task_info)
+        worker.notify()
         return BatchSubmitResponse(tasks=tasks)
 
     @app.get("/api/v1/batch/tasks", response_model=list[TaskInfo], dependencies=[require_token])
     async def list_tasks(status: str | None = Query(default=None)):
         task_status = TaskStatus(status) if status else None
         return task_store.list_tasks(status=task_status)
+
+    @app.get("/api/v1/batch/tasks/stream", dependencies=[require_token])
+    async def stream_tasks():
+        async def event_gen():
+            last_snapshot: str = ""
+            while worker.is_running:
+                tasks = task_store.list_tasks()
+                snapshot = json.dumps([t.model_dump(mode="json") for t in tasks])
+                if snapshot != last_snapshot:
+                    yield f"data: {snapshot}\n\n"
+                    last_snapshot = snapshot
+                await asyncio.sleep(1)
+        return StreamingResponse(event_gen(), media_type="text/event-stream")
 
     @app.get("/api/v1/batch/tasks/{task_id}", response_model=TaskInfo, dependencies=[require_token])
     async def get_task(task_id: str):

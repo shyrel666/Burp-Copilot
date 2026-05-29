@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from app.core.database import Database
 from app.llm.base import BaseLLMProvider, HealthCheckResult
 from app.llm.fake_provider import VALID_RESPONSE
 from app.models.schemas import AnalysisMode, Source, TaskStatus
@@ -46,8 +47,9 @@ class SlowProvider(BaseLLMProvider):
 
 @pytest.fixture
 def stores(tmp_path):
-    task_store = TaskStore(tmp_path)
-    history_store = HistoryStore(tmp_path)
+    db = Database(tmp_path)
+    task_store = TaskStore(db)
+    history_store = HistoryStore(db)
     return task_store, history_store
 
 

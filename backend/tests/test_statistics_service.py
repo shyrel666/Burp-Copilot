@@ -3,6 +3,7 @@ import sqlite3
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.core.database import Database
 from app.models.schemas import (
     AnalysisMetadata,
     AnalysisMode,
@@ -48,7 +49,7 @@ def _save(store, *, findings, llm_status="ok", target_url="https://x.test/a", re
 
 
 def test_empty_history_returns_zeros(tmp_path):
-    service = StatisticsService(HistoryStore(tmp_path))
+    service = StatisticsService(HistoryStore(Database(tmp_path)))
     stats = service.get_statistics()
     assert stats.total_analyses == 0
     assert stats.success_rate == 0.0
@@ -58,7 +59,7 @@ def test_empty_history_returns_zeros(tmp_path):
 
 
 def test_statistics_aggregates_severity_success_and_top_types(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _save(store, findings=[_finding("high", "A01"), _finding("low", "A01")], llm_status="ok")
     _save(store, findings=[_finding("critical", "A03")], llm_status="repaired")
     _save(store, findings=[], llm_status="failed")
@@ -74,7 +75,7 @@ def test_statistics_aggregates_severity_success_and_top_types(tmp_path):
 
 
 def test_attack_surface_includes_endpoints_without_findings(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _save(
         store,
         findings=[],
@@ -92,7 +93,7 @@ def test_attack_surface_includes_endpoints_without_findings(tmp_path):
 
 
 def test_attack_surface_ranks_higher_severity_and_write_methods_first(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _save(
         store,
         findings=[_finding("critical")],
@@ -138,7 +139,7 @@ def _insert(db_path, *, created_at, llm_status, findings):
 
 
 def test_since_filter_restricts_statistics(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _insert(store.db_path, created_at="2020-01-01T00:00:00+00:00", llm_status="ok", findings=[_finding("low")])
     _insert(store.db_path, created_at="2026-01-01T00:00:00+00:00", llm_status="ok", findings=[_finding("high")])
 

@@ -1,6 +1,6 @@
 import { AlertCircle, BookOpen, Compass, Globe, History, KeyRound, Layers, LayoutDashboard, Play, ShieldCheck, X } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { analyzeTrafficStream, cancelTask, fetchAnalysis, fetchHistory, fetchSettings, fetchTasks, saveProviderSettings, submitBatch, testProvider } from './api/client';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { analyzeTrafficStream, cancelTask, fetchAnalysis, fetchHistory, fetchSettings, fetchTasks, saveProviderSettings, streamTasks, submitBatch, testProvider } from './api/client';
 import { Dashboard } from './Dashboard';
 import { LocaleContext, getMessages, useLocale, type Locale, type LocaleKeys } from './i18n';
 import type { AnalysisHistoryItem, AnalysisResponse, Finding, HistoryFilters, Mode, ProviderName, ProviderSettings, StreamStatus, TaskInfo } from './types';
@@ -84,6 +84,10 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
+  useEffect(() => {
     if (view === 'settings') {
       void loadSettings();
     }
@@ -107,8 +111,11 @@ function AppInner() {
 
   useEffect(() => {
     if (view !== 'batch') return;
-    const interval = setInterval(() => void loadTasks(), 3000);
-    return () => clearInterval(interval);
+    // Initial load via REST, then switch to SSE for live updates
+    void loadTasks();
+    const controller = new AbortController();
+    streamTasks(setTasks, controller.signal);
+    return () => controller.abort();
   }, [view]);
 
   async function loadSettings() {
@@ -119,8 +126,13 @@ function AppInner() {
     }
   }
 
+  const abortRef = useRef<AbortController | null>(null);
+
   async function submitAnalysis(event: FormEvent) {
     event.preventDefault();
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setError(null);
     setAnalysis(null);
@@ -131,15 +143,19 @@ function AppInner() {
         { mode, requestText, responseText, targetUrl },
         (status) => setStreamStatuses((statuses) => [...statuses, status]),
         (text) => setStreamingText((prev) => prev + text),
+        controller.signal,
       );
       setAnalysis(result);
       setStreamingText('');
       await loadHistory();
     } catch (exc) {
+      if (controller.signal.aborted) return;
       setStreamStatuses((statuses) => [...statuses, 'failed']);
       setError(localizedErrorMessage(exc));
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        setLoading(false);
+      }
     }
   }
 

@@ -30,6 +30,7 @@ class OpenAIProvider(BaseLLMProvider):
         self.max_attempts = max_attempts
         self.request_timeout = request_timeout
         self.retry_backoff = retry_backoff
+        self._http: httpx.AsyncClient | None = None
 
     async def analyze(self, system_prompt: str, user_prompt: str) -> str:
         return await self._chat(
@@ -65,11 +66,8 @@ class OpenAIProvider(BaseLLMProvider):
         if not self.api_key:
             return HealthCheckResult(ok=False, reason="API key is not configured")
         try:
-            async with self._client(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/models",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                )
+            client = self._get_http(timeout=10.0)
+            response = await client.get("/models")
         except httpx.TimeoutException:
             return HealthCheckResult(ok=False, reason="Provider request timed out")
         except httpx.HTTPError as exc:
@@ -80,21 +78,33 @@ class OpenAIProvider(BaseLLMProvider):
             return HealthCheckResult(ok=False, reason="Provider rejected the API key")
         return HealthCheckResult(ok=False, reason=f"Provider returned HTTP {response.status_code}")
 
-    def _client(self, timeout: float) -> httpx.AsyncClient:
-        return httpx.AsyncClient(timeout=timeout)
+    async def aclose(self) -> None:
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None
+
+    def _get_http(self, timeout: float | None = None) -> httpx.AsyncClient:
+        """Return the shared client, creating it lazily on first use."""
+        if self._http is None or self._http.is_closed:
+            headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+            self._http = httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=timeout or self.request_timeout,
+                headers=headers,
+            )
+        return self._http
 
     async def _chat(self, messages: list[dict[str, str]]) -> str:
         if not self.api_key:
             raise RuntimeError("OpenAI API key is not configured")
+        client = self._get_http()
         for attempt in range(1, self.max_attempts + 1):
             is_last = attempt == self.max_attempts
             try:
-                async with self._client(timeout=self.request_timeout) as client:
-                    response = await client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        json={"model": self.model, "messages": messages, "temperature": 0.1},
-                    )
+                response = await client.post(
+                    "/chat/completions",
+                    json={"model": self.model, "messages": messages, "temperature": 0.1},
+                )
             except (httpx.TimeoutException, httpx.TransportError):
                 if is_last:
                     raise
@@ -114,34 +124,33 @@ class OpenAIProvider(BaseLLMProvider):
     async def _chat_stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         if not self.api_key:
             raise RuntimeError("OpenAI API key is not configured")
+        client = self._get_http()
         for attempt in range(1, self.max_attempts + 1):
             is_last = attempt == self.max_attempts
             try:
-                async with self._client(timeout=self.request_timeout) as client:
-                    async with client.stream(
-                        "POST",
-                        f"{self.base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        json={"model": self.model, "messages": messages, "temperature": 0.1, "stream": True},
-                    ) as response:
-                        if response.status_code in _TRANSIENT_STATUS_CODES and not is_last:
-                            await asyncio.sleep(self.retry_backoff * attempt)
+                async with client.stream(
+                    "POST",
+                    "/chat/completions",
+                    json={"model": self.model, "messages": messages, "temperature": 0.1, "stream": True},
+                ) as response:
+                    if response.status_code in _TRANSIENT_STATUS_CODES and not is_last:
+                        await asyncio.sleep(self.retry_backoff * attempt)
+                        continue
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "):
                             continue
-                        response.raise_for_status()
-                        async for line in response.aiter_lines():
-                            if not line.startswith("data: "):
-                                continue
-                            data = line[len("data: "):]
-                            if data.strip() == "[DONE]":
-                                return
-                            try:
-                                payload = json.loads(data)
-                                content = payload.get("choices", [{}])[0].get("delta", {}).get("content")
-                                if content:
-                                    yield content
-                            except (json.JSONDecodeError, IndexError, KeyError):
-                                continue
-                        return
+                        data = line[len("data: "):]
+                        if data.strip() == "[DONE]":
+                            return
+                        try:
+                            payload = json.loads(data)
+                            content = payload.get("choices", [{}])[0].get("delta", {}).get("content")
+                            if content:
+                                yield content
+                        except (json.JSONDecodeError, IndexError, KeyError):
+                            continue
+                    return
             except (httpx.TimeoutException, httpx.TransportError):
                 if is_last:
                     raise

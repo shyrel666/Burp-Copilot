@@ -1,3 +1,4 @@
+from app.core.database import Database
 from app.models.schemas import (
     AnalysisMetadata,
     AnalysisMode,
@@ -59,7 +60,7 @@ def test_extract_endpoint_returns_none_for_garbage():
 
 
 def test_save_records_endpoint_even_without_findings(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     analysis = AnalysisResponse(
         analysis_id=store.create_analysis_id(),
         summary="no issues",

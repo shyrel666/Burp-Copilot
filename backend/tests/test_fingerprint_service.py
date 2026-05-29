@@ -1,3 +1,4 @@
+from app.core.database import Database
 from app.models.schemas import (
     AnalysisMetadata,
     AnalysisMode,
@@ -28,14 +29,14 @@ def _save(store, *, target_url, request_text, response_text):
 
 
 def test_unknown_host_returns_unknown_profile(tmp_path):
-    service = FingerprintService(HistoryStore(tmp_path))
+    service = FingerprintService(HistoryStore(Database(tmp_path)))
     profile = service.fingerprint("nope.test")
     assert profile.system_types == ["unknown"]
     assert profile.endpoint_count == 0
 
 
 def test_detects_wordpress_and_cookie_session(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _save(
         store,
         target_url="https://blog.test/wp-login.php",
@@ -52,7 +53,7 @@ def test_detects_wordpress_and_cookie_session(tmp_path):
 
 
 def test_detects_rest_api_with_bearer_token(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _save(
         store,
         target_url="https://api.test/api/users/1",
@@ -68,7 +69,7 @@ def test_detects_rest_api_with_bearer_token(tmp_path):
 
 
 def test_detects_graphql_and_spa(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _save(
         store,
         target_url="https://app.test/graphql",

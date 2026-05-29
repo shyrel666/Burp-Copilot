@@ -142,3 +142,9 @@ export interface RoadmapResponse {
   llm_status: 'ok' | 'repaired' | 'failed';
   notes: string | null;
 }
+
+export interface DashboardData {
+  statistics: StatisticsResponse;
+  recent_findings: RecentFinding[];
+  attack_surface: AttackSurfaceResponse;
+}

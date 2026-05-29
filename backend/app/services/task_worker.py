@@ -29,15 +29,19 @@ class TaskWorker:
         provider_factory: Callable[[], BaseLLMProvider],
         concurrency: int = 2,
         poll_interval: float = 1.0,
+        max_poll_interval: float = 5.0,
     ):
         self.task_store = task_store
         self.history_store = history_store
         self.provider_factory = provider_factory
         self.concurrency = concurrency
         self.poll_interval = poll_interval
+        self.max_poll_interval = max_poll_interval
         self._semaphore = asyncio.Semaphore(concurrency)
         self._shutdown = False
         self._task: asyncio.Task | None = None
+        self._current_interval = poll_interval
+        self._wake_event = asyncio.Event()
 
     async def start(self) -> None:
         recovered = self.task_store.recover_running_tasks()
@@ -59,14 +63,33 @@ class TaskWorker:
                     pass
             self._task = None
 
+    def notify(self) -> None:
+        """Wake up the worker immediately (e.g. after enqueueing a task)."""
+        self._wake_event.set()
+
+    @property
+    def is_running(self) -> bool:
+        """True while the worker loop is active (not shutting down)."""
+        return not self._shutdown
+
     async def _run(self) -> None:
         while not self._shutdown:
             tasks = self.task_store.fetch_queued(limit=self.concurrency)
-            for task_row in tasks:
-                if self._shutdown:
-                    break
-                asyncio.create_task(self._process(task_row))
-            await asyncio.sleep(self.poll_interval)
+            if tasks:
+                self._current_interval = self.poll_interval
+                for task_row in tasks:
+                    if self._shutdown:
+                        break
+                    asyncio.create_task(self._process(task_row))
+            else:
+                self._current_interval = min(
+                    self._current_interval * 1.5, self.max_poll_interval
+                )
+            self._wake_event.clear()
+            try:
+                await asyncio.wait_for(self._wake_event.wait(), timeout=self._current_interval)
+            except asyncio.TimeoutError:
+                pass
 
     async def _process(self, task_row: dict) -> None:
         task_id = task_row["task_id"]

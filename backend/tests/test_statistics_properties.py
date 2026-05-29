@@ -9,6 +9,7 @@ import sqlite3
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from app.core.database import Database
 from app.models.schemas import AnalysisMetadata
 from app.services.history_store import HistoryStore
 from app.services.statistics_service import StatisticsService
@@ -86,7 +87,7 @@ _settings = settings(
 @_settings
 @given(analyses=st.lists(_analysis_strategy, max_size=30))
 def test_property_severity_distribution_sum(tmp_path_factory, analyses):
-    store = HistoryStore(tmp_path_factory.mktemp("p1"))
+    store = HistoryStore(Database(tmp_path_factory.mktemp("p1")))
     _insert(store.db_path, analyses)
     stats = StatisticsService(store).get_statistics()
     dist = stats.severity_distribution
@@ -98,7 +99,7 @@ def test_property_severity_distribution_sum(tmp_path_factory, analyses):
 @_settings
 @given(analyses=st.lists(_analysis_strategy, min_size=1, max_size=30))
 def test_property_success_rate_formula(tmp_path_factory, analyses):
-    store = HistoryStore(tmp_path_factory.mktemp("p2"))
+    store = HistoryStore(Database(tmp_path_factory.mktemp("p2")))
     _insert(store.db_path, analyses)
     stats = StatisticsService(store).get_statistics()
     success = sum(1 for a in analyses if a["llm_status"] in ("ok", "repaired"))
@@ -109,7 +110,7 @@ def test_property_success_rate_formula(tmp_path_factory, analyses):
 @_settings
 @given(analyses=st.lists(_analysis_strategy, max_size=30))
 def test_property_top_types_ranking(tmp_path_factory, analyses):
-    store = HistoryStore(tmp_path_factory.mktemp("p3"))
+    store = HistoryStore(Database(tmp_path_factory.mktemp("p3")))
     _insert(store.db_path, analyses)
     top = StatisticsService(store).get_statistics().top_vulnerability_types
     counts = [t.count for t in top]
@@ -137,7 +138,7 @@ def test_property_top_types_ranking(tmp_path_factory, analyses):
     since_year=st.integers(min_value=2000, max_value=2030),
 )
 def test_property_since_filter(tmp_path_factory, analyses, since_year):
-    store = HistoryStore(tmp_path_factory.mktemp("p4"))
+    store = HistoryStore(Database(tmp_path_factory.mktemp("p4")))
     _insert(store.db_path, analyses)
     since = f"{since_year}-01-01T00:00:00+00:00"
     stats = StatisticsService(store).get_statistics(since=since)
@@ -149,7 +150,7 @@ def test_property_since_filter(tmp_path_factory, analyses, since_year):
 @_settings
 @given(analyses=st.lists(_analysis_strategy, max_size=30), limit=st.integers(min_value=1, max_value=100))
 def test_property_recent_findings_ordering(tmp_path_factory, analyses, limit):
-    store = HistoryStore(tmp_path_factory.mktemp("p5"))
+    store = HistoryStore(Database(tmp_path_factory.mktemp("p5")))
     _insert(store.db_path, analyses)
     recent = StatisticsService(store).get_recent_findings(limit=limit)
 

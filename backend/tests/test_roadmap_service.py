@@ -1,6 +1,7 @@
 import asyncio
 import json
 
+from app.core.database import Database
 from app.llm.base import HealthCheckResult
 from app.models.schemas import (
     AnalysisMetadata,
@@ -99,7 +100,7 @@ def _service(store, provider):
 
 
 def test_roadmap_builds_stages_and_includes_context_in_prompt(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _seed(store)
     provider = RoadmapProvider()
 
@@ -114,7 +115,7 @@ def test_roadmap_builds_stages_and_includes_context_in_prompt(tmp_path):
 
 
 def test_roadmap_empty_host_returns_guidance(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     result = asyncio.run(_service(store, RoadmapProvider()).build("nobody.test"))
     assert result.stages == []
     assert result.llm_status == "ok"
@@ -122,7 +123,7 @@ def test_roadmap_empty_host_returns_guidance(tmp_path):
 
 
 def test_roadmap_repairs_invalid_then_succeeds(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _seed(store)
     result = asyncio.run(_service(store, RoadmapProvider(bad_then_repair=True)).build("api.test"))
     assert result.llm_status == "repaired"
@@ -130,7 +131,7 @@ def test_roadmap_repairs_invalid_then_succeeds(tmp_path):
 
 
 def test_roadmap_provider_failure_yields_failed_status(tmp_path):
-    store = HistoryStore(tmp_path)
+    store = HistoryStore(Database(tmp_path))
     _seed(store)
     result = asyncio.run(_service(store, RoadmapProvider(fail=True)).build("api.test"))
     assert result.llm_status == "failed"

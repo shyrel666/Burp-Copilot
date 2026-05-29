@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.core.database import Database
 from app.models.schemas import (
     AnalysisHistoryItem,
     AnalysisMetadata,
@@ -18,12 +19,24 @@ from app.models.schemas import (
 from app.services.endpoint_inventory import ExtractedEndpoint, extract_endpoint
 
 
+SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+
+def _top_severity(findings: list[Finding]) -> str | None:
+    """Return the highest severity from findings, or None if empty."""
+    if not findings:
+        return None
+    return min(findings, key=lambda f: SEVERITY_RANK.get(f.severity.value, 99)).severity.value
+
+
 class HistoryStore:
-    def __init__(self, data_dir: str | Path):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.db_path = self.data_dir / "analysis.sqlite3"
+    def __init__(self, db: Database):
+        self._db = db
         self._init_db()
+
+    @property
+    def db_path(self) -> Path:
+        return self._db.db_path
 
     def save(
         self,
@@ -38,15 +51,16 @@ class HistoryStore:
     ) -> None:
         created_at = datetime.now(timezone.utc).isoformat()
         endpoint = extract_endpoint(request_text, target_url)
-        with sqlite3.connect(self.db_path) as conn:
+        top_sev = _top_severity(analysis.findings)
+        with self._db.transaction() as conn:
             conn.execute(
                 """
                 INSERT INTO analysis_history (
                     analysis_id, created_at, source, mode, target_url, request_text,
                     response_text, metadata_json, summary, findings_json,
-                    redaction_applied, llm_status
+                    redaction_applied, llm_status, top_severity
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     analysis.analysis_id,
@@ -61,6 +75,7 @@ class HistoryStore:
                     json.dumps([finding.model_dump(mode="json") for finding in analysis.findings]),
                     int(analysis.redaction_applied),
                     analysis.llm_status,
+                    top_sev,
                 ),
             )
             if endpoint is not None:
@@ -122,26 +137,18 @@ class HistoryStore:
         if until:
             query += " AND created_at <= ?"
             params.append(until)
+        if min_severity:
+            min_rank = SEVERITY_RANK.get(min_severity, 99)
+            allowed = [s for s, r in SEVERITY_RANK.items() if r <= min_rank]
+            placeholders = ",".join("?" * len(allowed))
+            query += f" AND top_severity IN ({placeholders})"
+            params.extend(allowed)
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(query, params).fetchall()
-        items = [self._row_to_item(row) for row in rows]
-        if min_severity:
-            items = self._filter_by_severity(items, min_severity)
-        return items
-
-    def _filter_by_severity(self, items: list[AnalysisHistoryItem], min_severity: str) -> list[AnalysisHistoryItem]:
-        severity_order = [s.value for s in Severity]
-        min_index = severity_order.index(min_severity) if min_severity in severity_order else len(severity_order)
-        return [
-            item for item in items
-            if any(
-                severity_order.index(f.severity.value) <= min_index
-                for f in item.findings
-            )
-        ]
+        conn = self._db.conn
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+        return [self._row_to_item(row) for row in rows]
 
     def list_endpoints(self, *, host: str | None = None) -> list[dict]:
         query = "SELECT * FROM endpoints WHERE 1=1"
@@ -150,9 +157,9 @@ class HistoryStore:
             query += " AND host = ?"
             params.append(host.lower())
         query += " ORDER BY created_at ASC"
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(query, params).fetchall()
+        conn = self._db.conn
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
         return [
             {
                 "analysis_id": row["analysis_id"],
@@ -169,49 +176,55 @@ class HistoryStore:
         ]
 
     def get(self, analysis_id: str) -> AnalysisHistoryItem | None:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            row = conn.execute(
-                "SELECT * FROM analysis_history WHERE analysis_id = ?",
-                (analysis_id,),
-            ).fetchone()
+        conn = self._db.conn
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM analysis_history WHERE analysis_id = ?",
+            (analysis_id,),
+        ).fetchone()
         return self._row_to_item(row) if row else None
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS analysis_history (
-                    analysis_id TEXT PRIMARY KEY,
-                    created_at TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    mode TEXT NOT NULL,
-                    target_url TEXT,
-                    request_text TEXT NOT NULL,
-                    response_text TEXT,
-                    metadata_json TEXT NOT NULL,
-                    summary TEXT NOT NULL,
-                    findings_json TEXT NOT NULL,
-                    redaction_applied INTEGER NOT NULL,
-                    llm_status TEXT NOT NULL
-                )
-                """
+        conn = self._db.conn
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS analysis_history (
+                analysis_id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                target_url TEXT,
+                request_text TEXT NOT NULL,
+                response_text TEXT,
+                metadata_json TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                findings_json TEXT NOT NULL,
+                redaction_applied INTEGER NOT NULL,
+                llm_status TEXT NOT NULL,
+                top_severity TEXT
             )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS endpoints (
-                    analysis_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    host TEXT,
-                    method TEXT NOT NULL,
-                    path_template TEXT NOT NULL,
-                    param_names TEXT NOT NULL,
-                    content_type TEXT,
-                    has_cookie INTEGER NOT NULL DEFAULT 0,
-                    has_auth_header INTEGER NOT NULL DEFAULT 0
-                )
-                """
+            """
+        )
+        # Migration: add top_severity column if missing (existing DBs)
+        try:
+            conn.execute("SELECT top_severity FROM analysis_history LIMIT 1")
+        except sqlite3.OperationalError:
+            conn.execute("ALTER TABLE analysis_history ADD COLUMN top_severity TEXT")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS endpoints (
+                analysis_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                host TEXT,
+                method TEXT NOT NULL,
+                path_template TEXT NOT NULL,
+                param_names TEXT NOT NULL,
+                content_type TEXT,
+                has_cookie INTEGER NOT NULL DEFAULT 0,
+                has_auth_header INTEGER NOT NULL DEFAULT 0
             )
+            """
+        )
 
     def _row_to_item(self, row: sqlite3.Row) -> AnalysisHistoryItem:
         return AnalysisHistoryItem(

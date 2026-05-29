@@ -3,6 +3,7 @@ import type {
   AnalysisResponse,
   ArchitectureProfile,
   AttackSurfaceResponse,
+  DashboardData,
   HistoryFilters,
   Mode,
   ProviderName,
@@ -51,6 +52,7 @@ export async function analyzeTrafficStream(
   input: AnalyzeTrafficInput,
   onStatus: (status: StreamStatus) => void,
   onContent?: (text: string) => void,
+  signal?: AbortSignal,
 ): Promise<AnalysisResponse> {
   const response = await fetch(`${API_BASE}/api/v1/analyze/stream`, {
     method: 'POST',
@@ -59,12 +61,13 @@ export async function analyzeTrafficStream(
       ...(BACKEND_TOKEN ? { 'X-Backend-Token': BACKEND_TOKEN } : {}),
     },
     body: JSON.stringify(analyzePayload(input)),
+    signal,
   });
   if (!response.ok) {
     const body = await response.text();
     throw new Error(body || `HTTP ${response.status}`);
   }
-  return readAnalysisStream(response, onStatus, onContent);
+  return readAnalysisStream(response, onStatus, onContent, signal);
 }
 
 export function fetchHistory(filters?: HistoryFilters): Promise<AnalysisHistoryItem[]> {
@@ -82,6 +85,15 @@ export function fetchHistory(filters?: HistoryFilters): Promise<AnalysisHistoryI
 
 export function fetchAnalysis(analysisId: string): Promise<AnalysisHistoryItem> {
   return request<AnalysisHistoryItem>(`/api/v1/analysis/${analysisId}`);
+}
+
+export function fetchDashboard(since?: string, findingsLimit = 20, surfaceLimit = 50): Promise<DashboardData> {
+  const params = new URLSearchParams();
+  if (since) params.set('since', since);
+  params.set('findings_limit', String(findingsLimit));
+  params.set('surface_limit', String(surfaceLimit));
+  const qs = params.toString();
+  return request<DashboardData>(`/api/v1/dashboard${qs ? `?${qs}` : ''}`);
 }
 
 export function fetchStatistics(since?: string): Promise<StatisticsResponse> {
@@ -166,6 +178,22 @@ export function fetchTasks(status?: string): Promise<TaskInfo[]> {
   return request<TaskInfo[]>(`/api/v1/batch/tasks${qs}`);
 }
 
+export function streamTasks(
+  onUpdate: (tasks: TaskInfo[]) => void,
+  signal?: AbortSignal,
+): void {
+  const eventSource = new EventSource(`${API_BASE}/api/v1/batch/tasks/stream`);
+  eventSource.onmessage = (event) => {
+    try {
+      onUpdate(JSON.parse(event.data) as TaskInfo[]);
+    } catch { /* ignore parse errors */ }
+  };
+  if (signal) {
+    signal.addEventListener('abort', () => eventSource.close(), { once: true });
+  }
+  return;
+}
+
 export function fetchTask(taskId: string): Promise<TaskInfo> {
   return request<TaskInfo>(`/api/v1/batch/tasks/${taskId}`);
 }
@@ -191,6 +219,7 @@ async function readAnalysisStream(
   response: Response,
   onStatus: (status: StreamStatus) => void,
   onContent?: (text: string) => void,
+  signal?: AbortSignal,
 ): Promise<AnalysisResponse> {
   let buffer = '';
   let result: AnalysisResponse | null = null;
@@ -223,6 +252,10 @@ async function readAnalysisStream(
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     while (true) {
+      if (signal?.aborted) {
+        reader.cancel();
+        break;
+      }
       const { done, value } = await reader.read();
       if (done) break;
       push(decoder.decode(value, { stream: true }));

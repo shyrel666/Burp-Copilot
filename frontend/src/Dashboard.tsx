@@ -2,15 +2,14 @@ import { AlertCircle, Compass, ShieldAlert, Sparkles, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchArchitecture,
-  fetchAttackSurface,
-  fetchRecentFindings,
+  fetchDashboard,
   fetchRoadmap,
-  fetchStatistics,
 } from './api/client';
 import { useLocale, type LocaleKeys } from './i18n';
 import type {
   ArchitectureProfile,
   AttackSurfaceResponse,
+  DashboardData,
   RecentFinding,
   RoadmapResponse,
   Severity,
@@ -33,14 +32,14 @@ export function Dashboard({ onSelectAnalysis }: { onSelectAnalysis: (id: string)
   const [surface, setSurface] = useState<AttackSurfaceResponse | null>(null);
 
   const load = useCallback(async () => {
-    const [s, r, a] = await Promise.allSettled([
-      fetchStatistics(),
-      fetchRecentFindings(20),
-      fetchAttackSurface(undefined, 50),
-    ]);
-    if (s.status === 'fulfilled') setStats(s.value);
-    if (r.status === 'fulfilled' && Array.isArray(r.value)) setRecent(r.value);
-    if (a.status === 'fulfilled' && Array.isArray(a.value?.endpoints)) setSurface(a.value);
+    try {
+      const data: DashboardData = await fetchDashboard();
+      setStats(data.statistics);
+      setRecent(data.recent_findings);
+      setSurface(data.attack_surface);
+    } catch {
+      /* keep existing state on error */
+    }
   }, []);
 
   useEffect(() => {
@@ -210,14 +209,15 @@ function RecentTimeline({
   onSelectAnalysis: (id: string) => void;
 }) {
   const { t } = useLocale();
+  const items = findings ?? [];
   return (
     <article className="panel-card">
       <h3>{t('dashboard_recent')}</h3>
-      {findings.length === 0 ? (
+      {items.length === 0 ? (
         <p className="muted">{t('dashboard_no_recent')}</p>
       ) : (
         <ul className="timeline">
-          {findings.map((f, i) => (
+          {items.map((f, i) => (
             <li
               key={`${f.analysis_id}-${i}`}
               className="timeline-item"

@@ -15,8 +15,16 @@ class _PatchedProvider(OpenAIProvider):
         super().__init__(api_key=api_key, **kwargs)
         self._transport = transport
 
-    def _client(self, timeout: float) -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=self._transport, timeout=timeout)
+    def _get_http(self, timeout=None) -> httpx.AsyncClient:
+        if self._http is None or self._http.is_closed:
+            headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+            self._http = httpx.AsyncClient(
+                transport=self._transport,
+                base_url=self.base_url,
+                timeout=timeout or self.request_timeout,
+                headers=headers,
+            )
+        return self._http
 
 
 def test_health_check_ok_when_models_endpoint_returns_200():
